@@ -1,0 +1,36 @@
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Local model bundle (download with `python -m culler.cli fetch-model`)
+models/*.task
+
+# Research clones and downloaded test fixtures (third-party, not redistributed)
+.research/
+
+# App icon is drawn by desktop/make_icon.py at build time
+assets/Sharpen.icns
+assets/icon-1024.png
+
+# Local catalogs
+.sharpen/
+*.db
+*.db-wal
+*.db-shm
+
+# PyInstaller output and packaged apps
+dist/
+build/
+*.dmg
+
+# TypeScript build info
+*.tsbuildinfo
