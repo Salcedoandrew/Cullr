@@ -118,7 +118,9 @@ port that closes with the window.
 ### Culling modes
 
 * **Auto Target** — keeps every frame that passes the quality gates. It answers
-  "is this frame acceptable?".
+  "is this frame acceptable?", and *Set selection strictness* picks how picky:
+  **EXTREME / FEW / STANDARD / MORE**, named stops rather than a raw 0–100.
+  Untouched, it follows the preset.
 * **Cull to Target** — instead answers "how many frames do I want?". Name
   a percentage with the 10–60 % slider (live `≈14 % of 5,745 photos` readout) or
   type the exact count (804); keepers are ranked by composite quality and cut at
@@ -126,12 +128,16 @@ port that closes with the window.
   silently dropped.
 * **Coverage beats the number** — a frame that is someone's only keeper is never
   cut to reach a target, so 14 % of 5,745 can land slightly above 804.
-* **Customize** — strictness (Lenient / Moderate / Strict), minimum keepers per
-  group, detect duplicates, detect highlights, detect blurry photos, detect
-  closed eyes, keep a frame of everyone, and *re-analyse every frame*.
-* **Stars & Colors rating scheme** — keepers get ★1 · Green, rejects ✗ · Red, and
-  *Overwrite ratings in XMP files* decides whether an existing sidecar is replaced
-  or left exactly as the photographer rated it.
+* **Customize** — detect duplicates (with the optional AI scene model),
+  detect highlights, detect blurry photos with its own blur-only slider, detect
+  closed eyes, then minimum keepers per group, keep a frame of everyone, and
+  *re-analyse every frame* (in the footer, behind a confirming tap).
+* **Stars & Colors rating scheme** — keepers get ★1 · Green and rejects ✗ · Red
+  by default; *Update* drills into a panel that gives Selected, Highlights,
+  Blurred, Closed Eyes, Duplicates and Unrated their own star and colour, with
+  *Restore defaults*. A star picked by hand still wins. *Overwrite ratings in XMP
+  files* decides whether an existing sidecar is replaced or left exactly as the
+  photographer rated it.
 
 ### People and the coverage guarantee
 
