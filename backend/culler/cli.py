@@ -79,6 +79,8 @@ def _settings_from_args(args) -> CullingSettings:
     settings = CullingSettings(preset=args.preset)
     if args.strictness is not None:
         settings.strictness = args.strictness
+    if getattr(args, "selection_strictness", None) is not None:
+        settings.selection_strictness = args.selection_strictness
     if args.no_blinks:
         settings.detect_blinks = False
     if args.no_grouping:
@@ -174,7 +176,10 @@ def build_parser() -> argparse.ArgumentParser:
     scan = sub.add_parser("scan", help="analyse a folder and score every photo")
     scan.add_argument("folder")
     scan.add_argument("--preset", default="wedding", choices=sorted(PRESETS))
-    scan.add_argument("--strictness", type=int, help="0-100; overrides the preset default")
+    scan.add_argument("--strictness", type=int,
+                      help="0-100; blur-only strictness (the Customize slider)")
+    scan.add_argument("--selection-strictness", type=int, dest="selection_strictness",
+                      help="0-100; overall selection strictness (the Auto Target stops)")
     scan.add_argument("--keep-per-group", type=int, dest="keep_per_group")
     scan.add_argument("--no-blinks", action="store_true")
     scan.add_argument("--no-grouping", action="store_true")

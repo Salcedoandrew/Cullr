@@ -16,6 +16,7 @@ import type {
 const FALLBACK_SETTINGS: Settings = {
   preset: "wedding",
   strictness: null,
+  selection_strictness: null,
   keep_min_per_group: 1,
   detect_blinks: true,
   detect_blur: true,

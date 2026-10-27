@@ -158,6 +158,24 @@ export function CullDialog({
   const count = total > 0 ? Math.max(1, Math.round(ratio * total)) : 0;
   const strictness = settings.strictness ?? preset?.strictness ?? 50;
 
+  // Auto Target's own control: the overall selection strictness as four named
+  // stops, never a raw number. The nearest stop to the effective value is the
+  // one shown, so an untouched library reads the preset's own strictness.
+  const stops = capabilities.strictness_stops ?? [];
+  const effectiveSelection = settings.selection_strictness ?? preset?.strictness ?? 50;
+  const stopIndex = stops.reduce(
+    (best, stop, index) =>
+      Math.abs(stop.value - effectiveSelection) < Math.abs(stops[best].value - effectiveSelection)
+        ? index
+        : best,
+    0,
+  );
+  const stop = stops[stopIndex];
+  const chooseStop = (index: number) => {
+    const next = stops[index];
+    if (next) onChange({ ...settings, selection_strictness: next.value });
+  };
+
   const clampRatio = (value: number) =>
     Math.min(MAX_PERCENT / 100, Math.max(MIN_PERCENT / 100, value));
 
@@ -283,6 +301,39 @@ export function CullDialog({
               Cull to Target
             </button>
           </div>
+
+          {!targetMode && stop && (
+            <div className="cull__selection">
+              <div className="cull__target-head">
+                <span className="cull__target-label">
+                  Set selection strictness
+                  <span
+                    className="cull__info"
+                    title="How picky the cull is: EXTREME keeps only the strongest frames, MORE keeps anything that passes the quality gates."
+                  >
+                    <InfoDot />
+                  </span>
+                </span>
+                <span className="cull__stop-name">{stop.label}</span>
+              </div>
+              <div className="cull__slider">
+                <input
+                  type="range"
+                  min={0}
+                  max={Math.max(0, stops.length - 1)}
+                  step={1}
+                  value={stopIndex}
+                  aria-label="Selection strictness: extreme to more"
+                  aria-valuetext={stop.label}
+                  onChange={(event) => chooseStop(Number(event.target.value))}
+                />
+              </div>
+              <div className="cull__scale">
+                <span>{stops[0].label}</span>
+                <span>{stops[stops.length - 1].label}</span>
+              </div>
+            </div>
+          )}
 
           <div className={`cull__target${targetMode ? "" : " is-off"}`}>
             <div className="cull__target-head">

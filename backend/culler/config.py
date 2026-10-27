@@ -179,6 +179,25 @@ PRESETS: dict[str, Preset] = {
 
 DEFAULT_PRESET = "wedding"
 
+# The Auto Target tab's "Set selection strictness" stops, in Aftershoot's order:
+# EXTREME keeps the fewest frames, MORE keeps everything the gates allow. The
+# values anchor to the preset strictness range (Sports 85 ... Wedding 35) rather
+# than being invented: EXTREME is the Sports gate, FEW sits between it and the
+# Portrait/Event middle, STANDARD is the Wedding default, MORE is lenient enough
+# that only clearly bad frames are dropped. The UI shows the name, never a
+# number, and `strictness_stops()` is the one definition both sides read.
+SELECTION_STOPS: tuple[tuple[str, str, int], ...] = (
+    ("extreme", "EXTREME", 85),
+    ("few", "FEW", 60),
+    ("standard", "STANDARD", 35),
+    ("more", "MORE", 15),
+)
+
+
+def strictness_stops() -> list[dict[str, Any]]:
+    return [{"key": key, "label": label, "value": value}
+            for key, label, value in SELECTION_STOPS]
+
 
 def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
@@ -189,7 +208,14 @@ class CullingSettings:
     """User-tunable settings for one library scan."""
 
     preset: str = DEFAULT_PRESET
-    strictness: int | None = None          # 0..100, None = preset default
+    # Blur-only strictness (the slider under Detect Blurry Photos). 0..100,
+    # None = follow the overall strictness below. It moves the two blur gates
+    # and nothing else: eyes and exposure are the overall knob's business.
+    strictness: int | None = None
+    # The Auto Target tab's overall selection strictness, 0..100 or one of the
+    # named stops in SELECTION_STOPS. None = the preset's own value. It scales
+    # every gate, so it is the "how picky is this cull" control.
+    selection_strictness: int | None = None
     keep_min_per_group: int | None = None
     detect_blinks: bool = True
     detect_blur: bool = True               # reject soft frames (all three blur gates)
@@ -266,8 +292,16 @@ class CullingSettings:
         return PRESETS.get(self.preset, PRESETS[DEFAULT_PRESET])
 
     def effective_strictness(self) -> int:
-        preset = self.resolved_preset()
-        return preset.strictness if self.strictness is None else int(self.strictness)
+        """The overall gate strictness: the Auto Target stop, else the preset."""
+        if self.selection_strictness is not None:
+            return int(self.selection_strictness)
+        return self.resolved_preset().strictness
+
+    def blur_strictness(self) -> int:
+        """The blur-only strictness: the Customize slider, else the overall."""
+        if self.strictness is not None:
+            return int(self.strictness)
+        return self.effective_strictness()
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -282,13 +316,17 @@ class CullingSettings:
     def gates(self) -> "Gates":
         preset = self.resolved_preset()
         t = max(0, min(100, self.effective_strictness())) / 100.0
+        # Blur is its own slider on purpose (Aftershoot's dialog has two
+        # independent ones); unset it follows the overall value, which is what
+        # keeps every existing library scoring exactly as before.
+        b = max(0, min(100, self.blur_strictness())) / 100.0
         eyes = (preset.eyes_closed_max if t == 0.5
                 else lerp(preset.eyes_closed_max + 1.5, preset.eyes_closed_max - 1.5, t))
         return Gates(
             blur_abs=ABS_BLUR_FLOOR,
-            blur_rel=lerp(0.30, 0.65, t),
+            blur_rel=lerp(0.30, 0.65, b),
             face_blur=lerp(preset.face_blur_gate * 0.65,
-                           preset.face_blur_gate * 1.60, t),
+                           preset.face_blur_gate * 1.60, b),
             eyes_closed_max=max(0.0, min(10.0, eyes)),
             clip_hi_max=lerp(0.12, 0.03, t),
             clip_lo_max=lerp(0.35, 0.08, t),

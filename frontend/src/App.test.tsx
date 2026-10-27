@@ -56,6 +56,7 @@ const TOTAL = 72;
 const settings: Settings = {
   preset: "wedding",
   strictness: null,
+  selection_strictness: null,
   keep_min_per_group: 1,
   detect_blinks: true,
   detect_blur: true,
@@ -78,6 +79,12 @@ const capabilities: Capabilities = {
   semantic_runtime: true,
   presets: [
     { key: "wedding", label: "Wedding / event", description: "", strictness: 35 },
+  ],
+  strictness_stops: [
+    { key: "extreme", label: "EXTREME", value: 85 },
+    { key: "few", label: "FEW", value: 60 },
+    { key: "standard", label: "STANDARD", value: 35 },
+    { key: "more", label: "MORE", value: 15 },
   ],
   default_settings: settings,
   analysis_long_edge: 1600,
@@ -238,6 +245,34 @@ describe("the cull options count", () => {
     expect(within(dialog).queryByText(/of [\d,]+ photos/)).toBeNull();
     expect(keepField(dialog).value).toBe("0");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("the Auto Target selection strictness", () => {
+  it("shows the named stops and swaps itself for the amount control", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    const slider = within(dialog).getByLabelText(
+      "Selection strictness: extreme to more") as HTMLInputElement;
+
+    // The wedding preset's own 35 is the STANDARD stop, so an untouched shoot
+    // opens reading the preset rather than an invented value.
+    expect(slider.value).toBe("2");
+    expect(slider.getAttribute("aria-valuetext")).toBe("STANDARD");
+
+    fireEvent.change(slider, { target: { value: "0" } });
+    expect(slider.getAttribute("aria-valuetext")).toBe("EXTREME");
+
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
+    expect(within(dialog).queryByLabelText("Selection strictness: extreme to more"))
+      .toBeNull();
   });
 });
 

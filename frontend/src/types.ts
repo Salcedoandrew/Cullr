@@ -158,7 +158,10 @@ export interface ImportType {
 
 export interface Settings {
   preset: string;
+  /** Blur-only strictness (the slider under Detect Blurry Photos). */
   strictness: number | null;
+  /** Auto Target's overall selection strictness; null = the preset's value. */
+  selection_strictness: number | null;
   keep_min_per_group: number | null;
   detect_blinks: boolean;
   detect_blur: boolean;
@@ -186,6 +189,13 @@ export interface Preset {
   strictness: number;
 }
 
+/** One stop on the Auto Target "Set selection strictness" scale. */
+export interface StrictnessStop {
+  key: string;
+  label: string;
+  value: number;
+}
+
 export interface Capabilities {
   faces: boolean;
   faces_error: string | null;
@@ -195,6 +205,7 @@ export interface Capabilities {
   semantic_runtime: boolean;
   presets: Preset[];
   default_settings: Settings;
+  strictness_stops: StrictnessStop[];
   analysis_long_edge: number;
   import_types: ImportType[];
 }

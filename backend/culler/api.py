@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from .config import (
     ANALYSIS_LONG_EDGE, IMAGE_EXTENSIONS, IMPORT_TYPE_EXTENSIONS, IMPORT_TYPE_KEYS,
     IMPORT_TYPE_LABELS, PRESETS, THUMB_LONG_EDGE, CullingSettings, resource_path,
+    strictness_stops,
 )
 from .db import Store, default_data_dir, serialize_photo
 from .imaging import iter_images, render_jpeg
@@ -438,6 +439,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 for p in PRESETS.values()
             ],
             "default_settings": CullingSettings().to_dict(),
+            # The Auto Target stop scale, single-sourced from config.py so the
+            # dialog cannot invent a stop the gates do not know.
+            "strictness_stops": strictness_stops(),
             "analysis_long_edge": ANALYSIS_LONG_EDGE,
             # The import screen's photo-type checkboxes, single-sourced from
             # config.py so the panel can never offer a type the scan rejects.

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from culler.config import CullingSettings
+from culler.config import CullingSettings, strictness_stops
 from culler.metrics.faces import Face, FaceMetrics
 from culler.metrics.technical import TechnicalMetrics
 from culler.scoring import composite, exposure_axis, score_photo, technical_reason
@@ -175,11 +175,55 @@ def test_profile_face_blink_is_not_trusted():
     assert technical_reason(tech(), faces, gate(settings), settings) is None
 
 
-def test_strictness_raises_the_face_gate():
+def test_blur_strictness_moves_only_the_blur_gates():
+    """The Customize slider is blur's own knob, as in Aftershoot's dialog."""
     lenient = CullingSettings(preset="portrait", strictness=0)
     strict = CullingSettings(preset="portrait", strictness=100)
     assert strict.gates().face_blur > lenient.gates().face_blur
+    assert strict.gates().blur_rel > lenient.gates().blur_rel
+    # Eyes and exposure belong to the Auto Target slider, not this one.
+    assert strict.gates().eyes_closed_max == lenient.gates().eyes_closed_max
+    assert strict.gates().clip_hi_max == lenient.gates().clip_hi_max
+
+
+def test_selection_strictness_moves_every_gate():
+    lenient = CullingSettings(preset="portrait", selection_strictness=0)
+    strict = CullingSettings(preset="portrait", selection_strictness=100)
     assert strict.gates().eyes_closed_max < lenient.gates().eyes_closed_max
+    assert strict.gates().clip_hi_max < lenient.gates().clip_hi_max
+    assert strict.gates().clip_lo_max < lenient.gates().clip_lo_max
+    assert strict.gates().face_blur > lenient.gates().face_blur
+
+
+def test_selection_stops_keep_a_monotone_number_of_frames():
+    """A fixed set of measured frames, cut at each named stop.
+
+    Six frames whose only difference is blown-highlight mass, so the exposure
+    gate decides. The clip gate runs lerp(0.12, 0.03, t): at EXTREME (85) it
+    admits clip_hi up to 0.0435, at FEW (60) 0.066, at STANDARD (35) 0.0885 and
+    at MORE (15) 0.1065. The six values below therefore survive in 2 / 3 / 4 / 5
+    frames respectively -- arithmetic on the gate formula, not a guess.
+    """
+    # A bright frame (mean 0.8) so the highlight gate -- which only applies
+    # above 0.55 mean luminance -- is the one deciding.
+    frames = [tech(clip_hi=clip, mean=0.8)
+              for clip in (0.0, 0.033, 0.055, 0.075, 0.095, 0.11)]
+
+    def kept(value: int) -> int:
+        settings = CullingSettings(preset="wedding", selection_strictness=value)
+        return sum(1 for frame in frames
+                   if technical_reason(frame, face_metrics(), settings.gates(), settings) is None)
+
+    extreme, few, standard, more = kept(85), kept(60), kept(35), kept(15)
+    assert extreme < few < standard < more, (extreme, few, standard, more)
+    assert (extreme, few, standard, more) == (2, 3, 4, 5)
+
+
+def test_the_named_stops_are_ordered_and_named_as_the_dialog_shows_them():
+    labels = [stop["label"] for stop in strictness_stops()]
+    values = [stop["value"] for stop in strictness_stops()]
+    assert labels == ["EXTREME", "FEW", "STANDARD", "MORE"]
+    assert values == sorted(values, reverse=True)
 
 
 def test_subject_sharpness_ranks_a_sharp_subject_over_a_soft_one():
