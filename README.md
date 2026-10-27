@@ -140,8 +140,9 @@ port that closes with the window.
   *re-analyse every frame* (in the footer, behind a confirming tap).
 * **Stars & Colors rating scheme** — keepers get ★1 · Green and rejects ✗ · Red
   by default; *Update* drills into a panel that gives Selected, Highlights,
-  Blurred, Closed Eyes, Duplicates and Unrated their own star and colour, with
-  *Restore defaults*. A star picked by hand still wins. *Overwrite ratings in XMP
+  Blurred, Closed Eyes, Duplicates and Unrated their own star and colour, each
+  row previewing the colour and star its sidecar will carry, with *Restore
+  defaults*. A star picked by hand still wins. *Overwrite ratings in XMP
   files* decides whether an existing sidecar is replaced or left exactly as the
   photographer rated it.
 

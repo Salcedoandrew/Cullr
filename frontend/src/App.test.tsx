@@ -415,6 +415,50 @@ describe("the Stars & Colors panel", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Back" }));
     expect(within(dialog).getByText("AI Automated Cull")).toBeTruthy();
   });
+
+  it("previews what each sidecar will say, per row, as the scheme is edited", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByLabelText("Edit star and colour ratings"));
+
+    // One chip per row, in row order, reading the row's star and colour.
+    const chips = () => [...dialog.querySelectorAll(".cull__chip")]
+      .map((chip) => ({
+        text: chip.textContent,
+        bg: (chip as HTMLElement).style.background,
+      }));
+    expect(chips().map((chip) => chip.text)).toEqual(
+      ["★1", "✗", "✗", "✗", "✗", "✗"]);
+    expect(chips()[0].bg).toBe("rgb(63, 174, 106)");          // Green
+    expect(chips()[1].bg).toBe("rgb(226, 86, 77)");           // Red
+
+    // Editing a row moves its own chip and leaves the other five alone.
+    fireEvent.change(within(dialog).getByLabelText("Closed Eyes stars"),
+                     { target: { value: "0" } });
+    fireEvent.change(within(dialog).getByLabelText("Closed Eyes colour"),
+                     { target: { value: "Purple" } });
+    const after = chips();
+    expect(after[3]).toEqual({ text: "0 ★", bg: "rgb(155, 116, 248)" });
+    expect(after.length).toBe(6);
+    expect(after.filter((chip) => chip.text === "★1").length).toBe(1);
+
+    // "No label" still previews the star; the pill just loses its fill.
+    fireEvent.change(within(dialog).getByLabelText("Blurred colour"),
+                     { target: { value: "" } });
+    const bare = dialog.querySelectorAll(".cull__chip")[2] as HTMLElement;
+    expect(bare.className).toContain("cull__chip--bare");
+    expect(bare.style.background).toBe("");
+    expect(bare.textContent).toBe("✗");
+
+    // The preview is decoration: the selects already announce both values.
+    expect(bare.getAttribute("aria-hidden")).toBe("true");
+  });
 });
 
 describe("the semantic dedup toggle", () => {

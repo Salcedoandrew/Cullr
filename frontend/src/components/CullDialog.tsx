@@ -52,6 +52,40 @@ const LABEL_CHOICES = ["Red", "Yellow", "Green", "Blue", "Purple", ""];
 const starLabel = (stars: number): string =>
   stars < 0 ? "✗" : stars === 0 ? "unrated" : `★${stars}`;
 
+// Lightroom's label colours, for display only -- the XMP gets the *name* above.
+// Lifted a little off the pure hues so near-black text stays legible on every
+// one of them (all five clear 4.9:1, where white text on Yellow would not).
+const LABEL_COLORS: Record<string, string> = {
+  Red: "#e2564d",
+  Yellow: "#e0b03a",
+  Green: "#3fae6a",
+  Blue: "#5a86f5",
+  Purple: "#9b74f8",
+};
+
+/** The star half of a chip, short enough to sit in a pill. */
+const chipStars = (stars: number): string =>
+  stars < 0 ? "✗" : stars === 0 ? "0 ★" : `★${stars}`;
+
+/**
+ * What this row will write to the sidecar, as one pill: the label colour and
+ * the star together, the way Aftershoot shows its rows. Decorative -- the two
+ * selects beside it already announce both values -- so it is hidden from the
+ * accessibility tree rather than read twice.
+ */
+function RatingChip({ stars, color }: { stars: number; color: string }) {
+  const fill = LABEL_COLORS[color];
+  return (
+    <span
+      className={`cull__chip${fill ? "" : " cull__chip--bare"}`}
+      style={fill ? { background: fill } : undefined}
+      aria-hidden="true"
+    >
+      {chipStars(stars)}
+    </span>
+  );
+}
+
 /** One line under the main row, derived from whatever scheme is saved. */
 function schemeSummary(scheme: RatingScheme): string {
   const selected = scheme.selected;
@@ -329,8 +363,9 @@ export function CullDialog({
         {view === "ratings" ? (
           <>
             <p className="cull__ratings-intro">
-              Every outcome writes one XMP rating and colour label. A star you
-              pick by hand still wins.
+              Every outcome writes one XMP rating and colour label — the chip on
+              each row is what the sidecar will say. A star you pick by hand
+              still wins.
             </p>
             <div className="cull__ratings">
               {RATING_ROWS.map(({ key, label }) => (
@@ -366,6 +401,7 @@ export function CullDialog({
                       </option>
                     ))}
                   </select>
+                  <RatingChip stars={scheme[key].stars} color={scheme[key].color} />
                 </div>
               ))}
             </div>
