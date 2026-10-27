@@ -67,8 +67,12 @@ jobs:
         id: version
         run: |
           case "$GITHUB_REF" in
-            refs/tags/v*) echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT" ;;
-            *) echo "value=0.1.0" >> "$GITHUB_OUTPUT" ;;
+            refs/tags/v*)
+              echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+              echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT" ;;
+            *)
+              echo "value=0.1.0" >> "$GITHUB_OUTPUT"
+              echo "tag=v0.1.0" >> "$GITHUB_OUTPUT" ;;
           esac
 
       # Builds the UI, draws the icon, freezes the .app, smoke-tests the frozen
@@ -86,12 +90,28 @@ jobs:
         working-directory: dist
         run: shasum -a 256 *.dmg | tee SHA256SUMS
 
+      # What the app's Check for updates reads, from the stable
+      # .../releases/latest/download/update.json URL. Its hash comes out of
+      # SHA256SUMS rather than being taken again here, so the manifest and the
+      # checksum file cannot disagree, and the payload is validated by the
+      # updater's own reader before it is written.
+      - name: Update manifest
+        run: |
+          python3 scripts/update_manifest.py \
+            --version "${{ steps.version.outputs.value }}" \
+            --tag "${{ steps.version.outputs.tag }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --sums dist/SHA256SUMS \
+            --dmg dist/*.dmg \
+            --out dist/update.json
+
       - uses: actions/upload-artifact@v4
         with:
           name: Cullr-${{ steps.version.outputs.value }}-dmg
           path: |
             dist/*.dmg
             dist/SHA256SUMS
+            dist/update.json
           if-no-files-found: error
 
       - name: Publish the release
@@ -114,4 +134,7 @@ jobs:
               --title "Cullr $version" \
               --notes-file dist/NOTES.md
           fi
-          gh release upload "$GITHUB_REF_NAME" dist/*.dmg dist/SHA256SUMS --clobber
+          # update.json rides with the .dmg: the app checks the latest release for
+          # it, so a release without one is a release the app cannot offer.
+          gh release upload "$GITHUB_REF_NAME" \
+            dist/*.dmg dist/SHA256SUMS dist/update.json --clobber
