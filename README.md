@@ -222,6 +222,21 @@ ad-hoc and writes `dist/Cullr-<version>-arm64.dmg`. A `v*` tag runs the same
 script on a macOS runner (see [`.github/workflows/release.yml`](.github/workflows/release.yml))
 and attaches the `.dmg` plus `SHA256SUMS` to the release.
 
+### Checking a build without installing it
+
+`scripts/check_build.py` boots a built app — or a downloaded `.dmg` — headlessly
+and checks the count the cull options show before a scan: it imports the folder,
+compares the app's count with a walk of that folder, and checks the pre-scan
+state the dialog falls back on. Your own library and `/Applications` are never
+touched.
+
+```bash
+python3 scripts/check_build.py --folder ~/Pictures/shoot --expect 72
+python3 scripts/check_build.py --dmg dist/Cullr-0.3.0-arm64.dmg --folder ~/Pictures/shoot
+```
+
+Add `--ui-from frontend/dist` to also confirm the app embedded the UI you built.
+
 ### Headless
 
 ```bash
