@@ -167,12 +167,34 @@ def validate_manifest(raw: Any) -> dict[str, Any]:
     }
 
 
+def _transport_message(exc: Exception, url: str) -> str:
+    """A sentence for a failed request, since the user sees this text.
+
+    A 404 on the manifest is the ordinary state before the first release carries
+    one, and it should read that way rather than as a raw HTTPError.
+    """
+    host = urllib.parse.urlsplit(url).hostname or url
+    if isinstance(exc, urllib.error.HTTPError):
+        if exc.code == 404:
+            return (f"the release manifest is not published yet (HTTP 404 from {host}); "
+                    f"releases before this feature do not carry one")
+        if exc.code in (403, 429):
+            return f"{host} refused the request (HTTP {exc.code}); try again a little later"
+        return f"{host} answered HTTP {exc.code} {exc.reason}"
+    if isinstance(exc, urllib.error.URLError):
+        return f"could not reach {host} ({exc.reason})"
+    return f"{type(exc).__name__}: {exc}"
+
+
 def fetch_manifest(url: str = MANIFEST_URL, timeout: float = 15.0) -> dict[str, Any]:
     """Read and validate the update manifest. HTTPS on a release host only."""
     _require_https(url)
     request = urllib.request.Request(url, headers={"User-Agent": f"{APP_NAME}/{__version__}"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
-        body = response.read(MANIFEST_LIMIT + 1)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            body = response.read(MANIFEST_LIMIT + 1)
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        raise UpdateError(_transport_message(exc, url)) from exc
     if len(body) > MANIFEST_LIMIT:
         raise UpdateError("the update manifest is implausibly large")
     try:
@@ -212,8 +234,11 @@ def download_update(
     try:
         request = urllib.request.Request(
             url, headers={"User-Agent": f"{APP_NAME}/{__version__}"})
-        with urllib.request.urlopen(request, timeout=60) as response, \
-                tmp.open("wb") as handle:
+        try:
+            response = urllib.request.urlopen(request, timeout=60)
+        except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+            raise UpdateError(_transport_message(exc, url)) from exc
+        with response, tmp.open("wb") as handle:
             total = int(response.headers.get("Content-Length") or 0)
             done = 0
             if progress is not None:

@@ -120,6 +120,35 @@ def test_fetch_manifest_refuses_an_unexpected_host():
         update.fetch_manifest("https://raw.githubusercontent.com/x/y/update.json")
 
 
+def test_fetch_manifest_explains_a_failed_request(monkeypatch):
+    """Whatever goes wrong, the user gets a sentence they can act on.
+
+    404 is the ordinary state before a release carries a manifest at all, so it
+    names that rather than showing a raw HTTPError.
+    """
+    import urllib.error
+
+    def boom(exc):
+        def urlopen(*_args, **_kwargs):
+            raise exc
+        return urlopen
+
+    cases = [
+        (urllib.error.HTTPError(update.MANIFEST_URL, 404, "Not Found", {}, None),
+         "not published yet"),
+        (urllib.error.HTTPError(update.MANIFEST_URL, 403, "Forbidden", {}, None),
+         "refused the request"),
+        (urllib.error.URLError("nodename nor servname provided"),
+         "could not reach github.com"),
+    ]
+    for exc, expected in cases:
+        monkeypatch.setattr(update.urllib.request, "urlopen", boom(exc))
+        with pytest.raises(update.UpdateError) as caught:
+            update.fetch_manifest()
+        assert expected in str(caught.value)
+        assert "HTTPError" not in str(caught.value)
+
+
 # ---- downloading --------------------------------------------------------- #
 
 
@@ -602,3 +631,70 @@ def test_helper_leaves_the_old_app_alone_when_the_image_is_bad(tmp_path):
         "CFBundleShortVersionString"] == "0.8.0"
     assert not (install_dir / "Cullr.app.new").exists()
     assert not marker.exists()                 # nothing was launched
+
+
+# ---- the desktop wrapper has to let go of the bundle ---------------------- #
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _desktop_module():
+    """The desktop entry point, loaded by path (it is not an installed package)."""
+    import importlib.util
+    import logging as _logging
+
+    spec = importlib.util.spec_from_file_location(
+        "cullr_desktop_for_update", ROOT / "desktop" / "cullr_desktop.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    module._test_log = _logging.getLogger("cullr.test")
+    return module
+
+
+class _ClosedSlot:
+    """Stands in for pywebview's ``window.events.closed``."""
+
+    def __init__(self) -> None:
+        self.handlers: list = []
+
+    def __iadd__(self, handler):
+        self.handlers.append(handler)
+        return self
+
+    def fire(self) -> None:
+        for handler in self.handlers:
+            handler()
+
+
+def test_the_desktop_app_closes_its_window_when_asked_to_quit(monkeypatch):
+    desktop = _desktop_module()
+    closed = _ClosedSlot()
+    exits: list[int] = []
+
+    class Window:
+        events = type("Events", (), {"closed": closed})()
+
+        def destroy(self):
+            closed.fire()          # as pywebview does once the window is gone
+
+    monkeypatch.setattr(desktop.os, "_exit", exits.append)
+    desktop._quit_for_update(Window(), desktop._test_log, grace=5.0)
+    # A window that closed is left to unwind normally: no hard exit.
+    assert exits == []
+
+
+def test_the_desktop_app_exits_anyway_if_the_window_will_not_close(monkeypatch):
+    """Quitting is the whole point of the call: the installer is waiting."""
+    desktop = _desktop_module()
+    exits: list[int] = []
+
+    class Window:
+        events = type("Events", (), {"closed": _ClosedSlot()})()
+
+        def destroy(self):
+            raise RuntimeError("AppKit said no")
+
+    monkeypatch.setattr(desktop.os, "_exit", exits.append)
+    desktop._quit_for_update(Window(), desktop._test_log, grace=0.0)
+    assert exits == [0]

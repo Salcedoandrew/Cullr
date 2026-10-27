@@ -176,19 +176,31 @@ def _quit_for_update(window, log: logging.Logger, grace: float = 3.0) -> None:
     """Close the window so this process exits, because the update installer
     cannot replace the bundle it is currently running from.
 
-    ``window.destroy()`` is the clean path: it ends ``webview.start()``, which
-    stops the service and lets the process go. The update runs on a server
-    thread, and AppKit prefers window work on the main thread, so a watchdog
-    exits the process directly if the window is still here a few seconds later —
-    quitting is the whole point of this call, and the installer is waiting.
+    ``window.destroy()`` is the clean path, and pywebview is built for being
+    called this way: on macOS ``BrowserView.destroy`` is
+    ``AppHelper.callAfter(self.window.close)``, which hands the close to the main
+    thread and fires ``events.closed`` once the window is really gone. That ends
+    ``webview.start()``, so the service stops and the process unwinds normally.
+
+    The grace period is the fallback for a window that will not close: quitting
+    is the whole point of this call, and the installer is waiting for it.
     """
+    closed = threading.Event()
+
+    def mark_closed() -> None:
+        closed.set()
+
+    try:
+        window.events.closed += mark_closed
+    except Exception:  # noqa: BLE001 - an older pywebview; the fallback covers it
+        log.debug("could not observe the window's closed event", exc_info=True)
     try:
         window.destroy()
-    except Exception:  # noqa: BLE001 - the watchdog below still has to run
+    except Exception:  # noqa: BLE001 - the fallback below still has to run
         log.exception("could not close the window for the update")
-    deadline = time.monotonic() + grace
-    while time.monotonic() < deadline:
-        time.sleep(0.1)
+    if closed.wait(timeout=max(0.0, grace)):
+        log.info("window closed for the update")
+        return
     log.warning("the window did not close for the update; exiting the process")
     os._exit(0)
 
