@@ -204,7 +204,7 @@ class CullingSettings:
     person_merge: float = 0.95
     person_min_photos: int = 2          # frames before a person must be covered
     person_min_face_ratio: float = 0.015  # face size that counts as a subject
-    # "Cull to target" (beta): keep roughly this fraction of the shoot, ranked by
+    # "Cull to target": keep roughly this fraction of the shoot, ranked by
     # measured quality. None means the gates decide (the "auto target" mode).
     # Coverage still wins, so the achieved count can sit slightly above it.
     target_ratio: float | None = None

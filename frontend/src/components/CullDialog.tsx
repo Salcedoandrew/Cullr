@@ -8,7 +8,7 @@ import type { Capabilities, Settings, Stats } from "../types";
  * Two modes, and they answer different questions:
  *
  *  · "Auto target" asks *is this frame acceptable* — the quality gates decide.
- *  · "Cull to target" (beta) asks *how many frames do I want* — keepers are
+ *  · "Cull to target" asks *how many frames do I want* — keepers are
  *    ranked by measured quality and cut at the target. Coverage still wins, so
  *    someone in the shoot is never dropped to hit a number.
  */
@@ -189,7 +189,6 @@ export function CullDialog({
               onClick={() => chooseMode(true)}
             >
               Cull to Target
-              <span className="cull__beta">Beta</span>
             </button>
           </div>
 
@@ -203,7 +202,7 @@ export function CullDialog({
               </span>
               <span className="cull__target-right">
                 <span className="cull__percent">
-                  ~{percent}% of {total.toLocaleString()} photos
+                  ~{percent}%{total > 0 ? ` of ${total.toLocaleString()} photos` : ""}
                 </span>
                 <input
                   className="cull__count"
@@ -231,7 +230,7 @@ export function CullDialog({
                 value={percent}
                 disabled={!targetMode}
                 aria-label="Target percentage"
-                aria-valuetext={`${percent}% of ${total} photos`}
+                aria-valuetext={total > 0 ? `${percent}% of ${total} photos` : `${percent}%`}
                 style={{ ["--fill" as string]: `${handleOffset}%` }}
                 onChange={(event) => setTarget(Number(event.target.value) / 100)}
               />

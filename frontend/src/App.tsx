@@ -181,7 +181,9 @@ export default function App() {
         setSettings(active);
         setFilter("all");
         setPersonId(null);
-        await startScan(created.id, active, false);
+        // No auto-cull: the cull options open first, and the job starts only
+        // when the user presses Start Cull in that window.
+        setCullOpen(true);
       } catch (event) {
         setError(errorText(event));
         throw event;
@@ -367,6 +369,15 @@ export default function App() {
       <div className="app__body">
         <Sidebar filter={filter} stats={stats} onChange={setFilter} />
         <main className="app__main">
+          {listed === 0 && !busy && !job && (
+            <p className="sheet-note">
+              No cull yet.{" "}
+              <button type="button" className="button" onClick={() => setCullOpen(true)}>
+                Cull settings
+              </button>{" "}
+              to set the parameters and start the cull.
+            </p>
+          )}
           <People
             people={people}
             suggestions={suggestions}

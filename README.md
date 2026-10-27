@@ -105,7 +105,7 @@ port that closes with the window.
 
 * **Auto Target** — keeps every frame that passes the quality gates. It answers
   "is this frame acceptable?".
-* **Cull to Target (beta)** — instead answers "how many frames do I want?". Name
+* **Cull to Target** — instead answers "how many frames do I want?". Name
   a percentage with the 10–60 % slider (live `≈14 % of 5,745 photos` readout) or
   type the exact count (804); keepers are ranked by composite quality and cut at
   the target, and the frames that lose are rejected as `Over target` rather than
@@ -254,7 +254,7 @@ lowers the eyes-open cutoff. Every rejection stores a reason (`blurry`,
 `unreadable`) that the UI shows — the point of auto-culling is that you can audit
 it.
 
-**Cull to target (beta)** — the pre-cull window asks one of two questions. *Auto
+**Cull to target** — the pre-cull window asks one of two questions. *Auto
 Target* asks "is this frame acceptable", and the gates above answer it. *Cull to
 Target* asks "how many frames do I want": keepers are ranked by composite
 quality and cut at the target percentage, and the frames that lose are rejected

@@ -391,7 +391,7 @@ bad frame. The lead is always the best *acceptable* frame, and ties go to the
 earliest capture. Groups always keep ≥ `keep_min_per_group`
 frames, so "auto-cull" can never empty a moment.
 
-### 4.5b Cull to target (beta)
+### 4.5b Cull to target
 
 A second question sits next to the gates: not "is this frame acceptable" but
 "how many frames do I want". Aftershoot exposes exactly this as a target
