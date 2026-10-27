@@ -2232,7 +2232,6 @@ kbd {
 
 .cull__target {
   padding-top: 16px;
-  transition: opacity 0.15s ease;
 }
 
 /* Auto Target's own control: four named stops, the same shape as the target
@@ -2729,6 +2728,10 @@ kbd {
 
 .cull__rating-select--stars {
   font-variant-numeric: tabular-nums;
+}
+
+.cull__ratings-export {
+  margin-top: 14px;
 }
 
 /* The ratings panel's own actions live inside the scroll area. */

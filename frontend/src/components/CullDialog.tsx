@@ -330,7 +330,7 @@ export function CullDialog({
           <>
             <p className="cull__ratings-intro">
               Every outcome writes one XMP rating and colour label. A star you
-              pick by hand still wins over the row below.
+              pick by hand still wins.
             </p>
             <div className="cull__ratings">
               {RATING_ROWS.map(({ key, label }) => (
@@ -369,7 +369,7 @@ export function CullDialog({
                 </div>
               ))}
             </div>
-            <label className="cull__check">
+            <label className="cull__check cull__ratings-export">
               <input
                 type="checkbox"
                 checked={reExport}
@@ -478,7 +478,8 @@ export function CullDialog({
             </div>
           )}
 
-          <div className={`cull__target${targetMode ? "" : " is-off"}`}>
+          {targetMode ? (
+          <div className="cull__target">
             <div className="cull__target-head">
               <span className="cull__target-label">
                 Set amount of photos
@@ -497,7 +498,6 @@ export function CullDialog({
                   aria-label="Photos to keep"
                   min={1}
                   value={count}
-                  disabled={!targetMode}
                   onChange={(event) => {
                     const typed = Number(event.target.value);
                     if (!Number.isFinite(typed) || total === 0) return;
@@ -514,7 +514,6 @@ export function CullDialog({
                 max={MAX_PERCENT}
                 step={1}
                 value={percent}
-                disabled={!targetMode}
                 aria-label="Target percentage"
                 aria-valuetext={total > 0 ? `${percent}% of ${total} photos` : `${percent}%`}
                 style={{ ["--fill" as string]: `${handleOffset}%` }}
@@ -538,18 +537,22 @@ export function CullDialog({
               <span>{MAX_PERCENT}%</span>
             </div>
 
-            {targetMode && draggingTarget ? (
+            {draggingTarget ? (
               <output className="cull__callout">{helper}</output>
             ) : (
               <p className="cull__help">
                 <span className="cull__help-icon"><InfoDot /></span>
-                {targetMode
-                  ? helper
-                  : "Auto Target keeps every frame that passes the quality gates — sharp, "
-                    + "open eyes, one per burst. Pick Cull to Target to also cap the count."}
+                {helper}
               </p>
             )}
           </div>
+          ) : (
+            <p className="cull__help">
+              <span className="cull__help-icon"><InfoDot /></span>
+              Auto Target keeps every frame that passes the quality gates — sharp,
+              open eyes, one per burst. Pick Cull to Target to also cap the count.
+            </p>
+          )}
         </section>
 
         <details className="cull__customize">

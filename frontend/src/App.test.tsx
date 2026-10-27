@@ -144,6 +144,11 @@ const keepField = (dialog: HTMLElement) =>
 const cullSettings = () =>
   within(screen.getByRole("banner")).getByRole("button", { name: "Cull settings" });
 
+// The amount control lives on the Cull to Target tab; Auto Target shows the
+// selection-strictness stops instead. The count is unchanged either way.
+const openTargetTab = (dialog: HTMLElement) =>
+  fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
+
 beforeEach(() => {
   vi.clearAllMocks();
   api.capabilities.mockResolvedValue(capabilities);
@@ -173,6 +178,7 @@ describe("the cull options count", () => {
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
     // The refresh has landed by now — that is the moment the count used to vanish.
     await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+    openTargetTab(dialog);
     expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
     expect(keepField(dialog).value).toBe("14");
   });
@@ -189,6 +195,7 @@ describe("the cull options count", () => {
     fireEvent.click(cullSettings());
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    openTargetTab(dialog);
     expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
     expect(keepField(dialog).value).toBe("14");
   });
@@ -216,6 +223,7 @@ describe("the cull options count", () => {
     fireEvent.click(cullSettings());
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    openTargetTab(dialog);
     expect(within(dialog).getByText("~20% of 5 photos")).toBeTruthy();
     expect(keepField(dialog).value).toBe("1");
   });
@@ -231,6 +239,7 @@ describe("the cull options count", () => {
     fireEvent.click(cullSettings());
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    openTargetTab(dialog);
     expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
     expect(keepField(dialog).value).toBe("14");
     // A scan already knows the number, so the folder is not walked again.
@@ -248,6 +257,7 @@ describe("the cull options count", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    openTargetTab(dialog);
     // Percent only: no total is claimed, the field stays at 0, nothing errors.
     expect(within(dialog).getByText("~20%")).toBeTruthy();
     expect(within(dialog).queryByText(/of [\d,]+ photos/)).toBeNull();
