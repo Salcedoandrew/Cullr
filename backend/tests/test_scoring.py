@@ -131,6 +131,42 @@ def test_blink_detection_can_be_disabled():
     assert technical_reason(tech(), faces, gate(settings), settings) is None
 
 
+def test_blur_detection_can_be_disabled():
+    # Each of the three blur paths is skipped when the toggle is off.
+    mush = CullingSettings(detect_blur=False)
+    assert technical_reason(tech(sharp=2.0), face_metrics(), gate(mush), mush) is None
+    soft = CullingSettings(preset="portrait", detect_blur=False)
+    soft_face = face_metrics(eyes=9.0, sharpness=25.0, area=0.05)
+    assert technical_reason(tech(sharp=120), soft_face, gate(soft), soft) is None
+    burst = CullingSettings(preset="wedding", detect_blur=False)
+    assert technical_reason(tech(sharp=18), face_metrics(), gate(burst), burst,
+                            group_median_sharpness=120.0) is None
+
+
+def test_highlights_detection_can_be_disabled():
+    settings = CullingSettings(detect_highlights=False)
+    assert technical_reason(tech(clip_hi=0.25, mean=0.85), face_metrics(),
+                            gate(settings), settings) is None
+
+
+def test_highlights_off_still_rejects_underexposure():
+    # There is no toggle for dark frames: they are always rejected.
+    settings = CullingSettings(detect_highlights=False)
+    assert technical_reason(tech(mean=0.02, clip_lo=0.6), face_metrics(),
+                            gate(settings), settings) == "underexposed"
+
+
+def test_detection_toggles_default_on():
+    settings = CullingSettings()
+    assert settings.detect_blur is True
+    assert settings.detect_highlights is True
+    # Libraries stored before the toggles existed carry no keys for them.
+    stored = CullingSettings.from_dict({})
+    assert stored.detect_blur is True
+    assert stored.detect_highlights is True
+    assert CullingSettings.from_dict({"detect_blur": False}).detect_blur is False
+
+
 def test_profile_face_blink_is_not_trusted():
     settings = CullingSettings(preset="wedding")
     faces = face_metrics(eyes=1.0, sharpness=400, yaw=80.0)

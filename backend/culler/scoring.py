@@ -175,28 +175,36 @@ def technical_reason(
     3. group-relative -- "soft for this burst", which is what actually decides
        between two otherwise-good frames, and is immune to the 6x swing that
        frame-wide Laplacian variance shows across scene types.
+
+    Blur and highlight rejections are switchable (detect_blur /
+    detect_highlights, the Customize toggles); underexposure has no switch,
+    so a dark frame is always rejected. The toggles only gate rejection --
+    the quality score still counts softness and exposure, so they still
+    rank frames inside a group and under cull-to-target.
     """
-    if tech.sharpness < gates.blur_abs:
-        return "blurry"
-
-    primary = faces.primary
-    if (gates.face_blur > 0 and primary is not None
-            and primary.area_ratio >= MIN_FACE_AREA_FOR_FOCUS
-            and primary.sharpness > 0
-            and primary.sharpness < gates.face_blur):
-        return "blurry"
-
-    if group_median_sharpness is not None and group_median_sharpness > 15.0:
-        ratio = settings.relative_blur_ratio
-        ratio = gates.blur_rel if ratio is None else ratio
-        if tech.sharpness < group_median_sharpness * ratio:
+    if settings.detect_blur:
+        if tech.sharpness < gates.blur_abs:
             return "blurry"
 
+        primary = faces.primary
+        if (gates.face_blur > 0 and primary is not None
+                and primary.area_ratio >= MIN_FACE_AREA_FOR_FOCUS
+                and primary.sharpness > 0
+                and primary.sharpness < gates.face_blur):
+            return "blurry"
+
+        if group_median_sharpness is not None and group_median_sharpness > 15.0:
+            ratio = settings.relative_blur_ratio
+            ratio = gates.blur_rel if ratio is None else ratio
+            if tech.sharpness < group_median_sharpness * ratio:
+                return "blurry"
+
     clip_hi, clip_lo, mean_luma = exposure_inputs(tech, faces)
-    if clip_hi > gates.clip_hi_max and mean_luma > 0.55:
-        return "overexposed"
-    if mean_luma > gates.mean_luma_max:
-        return "overexposed"
+    if settings.detect_highlights:
+        if clip_hi > gates.clip_hi_max and mean_luma > 0.55:
+            return "overexposed"
+        if mean_luma > gates.mean_luma_max:
+            return "overexposed"
     if mean_luma < gates.mean_luma_min:
         return "underexposed"
     if clip_lo > gates.clip_lo_max and mean_luma < 0.25:

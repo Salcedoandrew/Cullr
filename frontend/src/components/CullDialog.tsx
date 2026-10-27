@@ -66,6 +66,37 @@ function InfoDot() {
   );
 }
 
+/**
+ * One Customize row: a label with an info dot on the left, a switch on the
+ * right. The switch is brass, the app's accent — not the dialog's blue.
+ */
+function DetectToggle({
+  label, info, checked, onChange,
+}: {
+  label: string;
+  info: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="cull__toggle">
+      <span className="cull__toggle-text">
+        {label}
+        <span className="cull__info" title={info}><InfoDot /></span>
+      </span>
+      <input
+        type="checkbox"
+        className="cull__toggle-input"
+        checked={checked}
+        onChange={(event) => onChange(event.target.checked)}
+      />
+      <span className="cull__toggle-track" aria-hidden="true">
+        <span className="cull__toggle-thumb" />
+      </span>
+    </label>
+  );
+}
+
 function helperText(ratio: number): string {
   if (ratio < 0.2) {
     return "A lower target gives a tighter selection, focused on your best images. "
@@ -262,20 +293,6 @@ export function CullDialog({
             Customize
           </summary>
           <div className="cull__advanced">
-            <label className="cull__field">
-              <span>Strictness <b>{strictness}</b></span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={strictness}
-                onChange={(event) =>
-                  onChange({ ...settings, strictness: Number(event.target.value) })
-                }
-              />
-            </label>
-
             <label className="cull__field cull__field--inline">
               <span>Keep at least per group</span>
               <input
@@ -292,26 +309,50 @@ export function CullDialog({
               />
             </label>
 
-            <label className="cull__check">
+            <DetectToggle
+              label="Detect Duplicates"
+              info="Groups near-identical frames so only the best of each burst is kept."
+              checked={settings.group_duplicates}
+              onChange={(value) => onChange({ ...settings, group_duplicates: value })}
+            />
+            <DetectToggle
+              label="Detect Highlights"
+              info="Rejects frames with blown highlights."
+              checked={settings.detect_highlights}
+              onChange={(value) => onChange({ ...settings, detect_highlights: value })}
+            />
+            <DetectToggle
+              label="Detect Blurry Photos"
+              info="Rejects soft frames — frame-wide, face-crop, and soft-for-its-burst."
+              checked={settings.detect_blur}
+              onChange={(value) => onChange({ ...settings, detect_blur: value })}
+            />
+
+            <div className="cull__strict">
               <input
-                type="checkbox"
-                checked={settings.detect_blinks}
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={strictness}
+                aria-label="Blur strictness: lenient to strict"
                 onChange={(event) =>
-                  onChange({ ...settings, detect_blinks: event.target.checked })
+                  onChange({ ...settings, strictness: Number(event.target.value) })
                 }
               />
-              <span>Reject closed eyes</span>
-            </label>
-            <label className="cull__check">
-              <input
-                type="checkbox"
-                checked={settings.group_duplicates}
-                onChange={(event) =>
-                  onChange({ ...settings, group_duplicates: event.target.checked })
-                }
-              />
-              <span>Group similar shots</span>
-            </label>
+              <div className="cull__strict-labels" aria-hidden="true">
+                <span>Lenient</span>
+                <span>Moderate</span>
+                <span>Strict</span>
+              </div>
+            </div>
+
+            <DetectToggle
+              label="Detect Closed Eyes"
+              info="Rejects frames where the subject's eyes are closed."
+              checked={settings.detect_blinks}
+              onChange={(value) => onChange({ ...settings, detect_blinks: value })}
+            />
             <label className="cull__check">
               <input
                 type="checkbox"

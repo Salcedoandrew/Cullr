@@ -180,6 +180,8 @@ class CullingSettings:
     strictness: int | None = None          # 0..100, None = preset default
     keep_min_per_group: int | None = None
     detect_blinks: bool = True
+    detect_blur: bool = True               # reject soft frames (all three blur gates)
+    detect_highlights: bool = True         # reject blown highlights (overexposure)
     group_duplicates: bool = True
     # Similarity gates (pHash 64-bit Hamming distance).
     duplicate_distance: int = 6            # facet: 90% similarity => 6

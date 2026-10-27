@@ -18,6 +18,8 @@ const FALLBACK_SETTINGS: Settings = {
   strictness: null,
   keep_min_per_group: 1,
   detect_blinks: true,
+  detect_blur: true,
+  detect_highlights: true,
   group_duplicates: true,
   person_coverage: true,
   target_ratio: null,

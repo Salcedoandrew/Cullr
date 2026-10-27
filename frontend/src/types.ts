@@ -161,6 +161,8 @@ export interface Settings {
   strictness: number | null;
   keep_min_per_group: number | null;
   detect_blinks: boolean;
+  detect_blur: boolean;
+  detect_highlights: boolean;
   group_duplicates: boolean;
   person_coverage: boolean;
   /** "Cull to target" fraction (0..1); null means the quality gates decide. */

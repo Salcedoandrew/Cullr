@@ -2060,7 +2060,9 @@ kbd {
 
 /* The cull sheet borrows the system's dark materials (SF, 12 px corners, the
    blue accent) rather than the app's warm palette: it is a decision about the
-   shoot, and it should feel like a macOS panel making it. */
+   shoot, and it should feel like a macOS panel making it. The Customize
+   toggles are the exception: they use the app's brass, so they read as app
+   switches rather than system ones. */
 
 .cull-scrim {
   position: fixed;
@@ -2430,11 +2432,6 @@ kbd {
   font-weight: 600;
 }
 
-.cull__field input[type="range"] {
-  width: 100%;
-  accent-color: #0a84ff;
-}
-
 .cull__field--inline {
   grid-template-columns: 1fr 88px;
   align-items: center;
@@ -2465,6 +2462,91 @@ kbd {
   height: 18px;
   margin: 0;
   accent-color: #0a84ff;
+}
+
+.cull__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  color: #e5e5ea;
+  cursor: default;
+}
+
+.cull__toggle-text {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cull__toggle-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.cull__toggle-track {
+  flex: none;
+  position: relative;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: #3a3a3c;
+  transition: background 0.15s ease;
+}
+
+.cull__toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s ease;
+}
+
+.cull__toggle-input:checked + .cull__toggle-track {
+  background: var(--brass);
+}
+
+.cull__toggle-input:checked + .cull__toggle-track .cull__toggle-thumb {
+  transform: translateX(20px);
+}
+
+.cull__toggle-input:focus-visible + .cull__toggle-track {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.cull__strict {
+  display: grid;
+  gap: 6px;
+}
+
+.cull__strict input[type="range"] {
+  width: 100%;
+  accent-color: #0a84ff;
+}
+
+.cull__strict-labels {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8e8e93;
+}
+
+.cull__strict-labels span:nth-child(2) {
+  text-align: center;
+}
+
+.cull__strict-labels span:nth-child(3) {
+  text-align: right;
 }
 
 .cull__warn {

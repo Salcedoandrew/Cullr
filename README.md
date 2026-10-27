@@ -112,8 +112,9 @@ port that closes with the window.
   silently dropped.
 * **Coverage beats the number** — a frame that is someone's only keeper is never
   cut to reach a target, so 14 % of 5,745 can land slightly above 804.
-* **Customize** — strictness, minimum keepers per group, reject closed eyes, group
-  similar shots, keep a frame of everyone, and *re-analyse every frame*.
+* **Customize** — strictness (Lenient / Moderate / Strict), minimum keepers per
+  group, detect duplicates, detect highlights, detect blurry photos, detect
+  closed eyes, keep a frame of everyone, and *re-analyse every frame*.
 * **Stars & Colors rating scheme** — keepers get ★1 · Green, rejects ✗ · Red, and
   *Overwrite ratings in XMP files* decides whether an existing sidecar is replaced
   or left exactly as the photographer rated it.
