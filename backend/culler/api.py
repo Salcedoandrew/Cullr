@@ -12,7 +12,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .config import (
     ANALYSIS_LONG_EDGE, IMAGE_EXTENSIONS, IMPORT_TYPE_EXTENSIONS, IMPORT_TYPE_KEYS,
     IMPORT_TYPE_LABELS, PRESETS, THUMB_LONG_EDGE, CullingSettings, resource_path,
@@ -35,6 +36,7 @@ from .metrics.scene import (
 )
 from .persons import clusters_from_rows, propose_merges
 from .pipeline import read_failure_sample, run_scan
+from .update import UpdateManager
 
 FRONTEND_DIST = resource_path("frontend", "dist")
 FACE_CROP_EDGE = 192
@@ -433,18 +435,24 @@ class SceneModelInstaller:
                 self._error = f"{type(exc).__name__}: {exc}"
 
 
-def create_app(data_dir: Path | None = None) -> FastAPI:
+def create_app(data_dir: Path | None = None,
+               on_quit: Callable[[], None] | None = None) -> FastAPI:
+    """Build the service. ``on_quit`` is how an install asks the desktop app to
+    close its window: the updater needs this process gone before it can replace
+    the bundle it is running from. It stays None for the headless server."""
     data_dir = Path(data_dir) if data_dir else default_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     store = Store(data_dir / "catalog.db")
     runner = JobRunner(store)
     scene_model = SceneModelInstaller()
+    updates = UpdateManager(data_dir)
     cache_dir = data_dir / "previews"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
     app = FastAPI(title="Cullr — AI photo culling", version="0.9.0")
     app.state.store = store
     app.state.runner = runner
+    app.state.updates = updates
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -455,6 +463,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     @app.get("/api/capabilities")
     def capabilities() -> dict:
         return {
+            # The running build's version, shown in the update panel and used by
+            # a manual check (the comparison itself is server-side).
+            "version": __version__,
             "faces": runner.faces.available,
             "faces_error": runner.faces.load_error,
             # Whether this build can decode RAW files at all. Not a feature
@@ -500,6 +511,36 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     def download_semantic_model() -> dict:
         """Start the one-time scene-model download (idempotent)."""
         return scene_model.start()
+
+    # ---- in-app update ------------------------------------------------- #
+    # Manual only: these four are the whole feature, and nothing calls them on
+    # its own. The check is synchronous so the UI can show "checking" for as
+    # long as it is actually checking; a download is a job the UI polls.
+    @app.get("/api/update")
+    def update_status() -> dict:
+        """The update state machine's current state."""
+        return updates.status()
+
+    @app.post("/api/update/check")
+    def update_check() -> dict:
+        """Fetch the latest release's manifest and compare versions."""
+        return updates.check()
+
+    @app.post("/api/update/download")
+    def update_download() -> dict:
+        """Download the newer .dmg, with progress, into the data directory."""
+        return updates.start_download()
+
+    @app.post("/api/update/cancel")
+    def update_cancel() -> dict:
+        """Stop before installation; the downloaded file is deleted."""
+        return updates.cancel()
+
+    @app.post("/api/update/install")
+    def update_install() -> dict:
+        """Verify again, replace the installed bundle from a detached helper,
+        and quit so the helper can do it."""
+        return updates.install(on_quit=on_quit)
 
     # ---- folders ------------------------------------------------------- #
     @app.get("/api/folders")

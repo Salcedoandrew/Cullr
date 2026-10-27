@@ -93,13 +93,13 @@ def _configure_logging(data_dir: Path) -> Path:
     return log_path
 
 
-def _start_service(data_dir: Path, port: int):
+def _start_service(data_dir: Path, port: int, on_quit=None):
     """Build the app and run uvicorn on a worker thread."""
     import uvicorn
 
     from culler.api import create_app
 
-    application = create_app(data_dir)
+    application = create_app(data_dir, on_quit=on_quit)
     server = uvicorn.Server(uvicorn.Config(application, host="127.0.0.1", port=port,
                                            log_level="warning", access_log=False))
     thread = threading.Thread(target=server.run, name="cullr-server", daemon=True)
@@ -170,6 +170,27 @@ def _attach_native_drop(window, base_url: str, log: logging.Logger) -> bool:
         return False
     log.info("native drag-and-drop attached")
     return True
+
+
+def _quit_for_update(window, log: logging.Logger, grace: float = 3.0) -> None:
+    """Close the window so this process exits, because the update installer
+    cannot replace the bundle it is currently running from.
+
+    ``window.destroy()`` is the clean path: it ends ``webview.start()``, which
+    stops the service and lets the process go. The update runs on a server
+    thread, and AppKit prefers window work on the main thread, so a watchdog
+    exits the process directly if the window is still here a few seconds later —
+    quitting is the whole point of this call, and the installer is waiting.
+    """
+    try:
+        window.destroy()
+    except Exception:  # noqa: BLE001 - the watchdog below still has to run
+        log.exception("could not close the window for the update")
+    deadline = time.monotonic() + grace
+    while time.monotonic() < deadline:
+        time.sleep(0.1)
+    log.warning("the window did not close for the update; exiting the process")
+    os._exit(0)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -245,7 +266,8 @@ def main(argv: list[str] | None = None) -> int:
 
     def boot() -> None:
         try:
-            server, service = _start_service(data_dir, port)
+            server, service = _start_service(
+                data_dir, port, on_quit=lambda: _quit_for_update(window, log))
             state["server"] = server
             state["service"] = service
             if not _wait_until_ready(base_url):
