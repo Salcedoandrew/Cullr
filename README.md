@@ -1,10 +1,19 @@
-<p align="center">📸</p>
+<div align="center">
+  <img src="assets/banner.svg" width="100%" alt="">
+</div>
 
-# Cullr
+<h1 align="center">Cullr</h1>
 
-### Local-first AI photo culling for macOS: sharpness, eyes-closed, burst de-duplication and a guaranteed keeper of everyone in the shoot.
+<p align="center">Local-first AI photo culling for macOS: sharpness, eyes-closed, burst de-duplication and a guaranteed keeper of everyone in the shoot.</p>
 
-[![GitHub release](https://img.shields.io/github/v/release/Salcedoandrew/cullr)](https://github.com/Salcedoandrew/cullr/releases/latest) [![Top language](https://img.shields.io/github/languages/top/Salcedoandrew/cullr)](https://github.com/Salcedoandrew/cullr) [![Last commit](https://img.shields.io/github/last-commit/Salcedoandrew/cullr/main)](https://github.com/Salcedoandrew/cullr/commits/main) [![Release](https://img.shields.io/github/actions/workflow/status/Salcedoandrew/cullr/release.yml?label=Release)](https://github.com/Salcedoandrew/cullr/actions/workflows/release.yml) [![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)](https://www.python.org/) [![macOS arm64](https://img.shields.io/badge/macOS-arm64-000000?logo=apple)](https://github.com/Salcedoandrew/cullr/releases/latest)
+<p align="center">
+  <a href="https://github.com/Salcedoandrew/cullr/releases/latest"><img alt="GitHub release" src="https://img.shields.io/github/v/release/Salcedoandrew/cullr?style=flat-square&labelColor=0B0C0E&color=D8A24A"></a>
+  <a href="https://github.com/Salcedoandrew/cullr"><img alt="Top language" src="https://img.shields.io/github/languages/top/Salcedoandrew/cullr?style=flat-square&labelColor=0B0C0E&color=D8A24A"></a>
+  <a href="https://github.com/Salcedoandrew/cullr/commits/main"><img alt="Last commit" src="https://img.shields.io/github/last-commit/Salcedoandrew/cullr/main?style=flat-square&labelColor=0B0C0E&color=D8A24A"></a>
+  <a href="https://github.com/Salcedoandrew/cullr/actions/workflows/release.yml"><img alt="Release" src="https://img.shields.io/github/actions/workflow/status/Salcedoandrew/cullr/release.yml?label=Release&style=flat-square&labelColor=0B0C0E&color=D8A24A"></a>
+  <a href="https://www.python.org/"><img alt="Python 3.10–3.12" src="https://img.shields.io/badge/python-3.10%E2%80%933.12-0B0C0E?style=flat-square"></a>
+  <a href="https://github.com/Salcedoandrew/cullr/releases/latest"><img alt="macOS arm64" src="https://img.shields.io/badge/macOS-arm64-0B0C0E?style=flat-square&logo=apple&logoColor=C8C4B8"></a>
+</p>
 
 [About](#-about) | [Technologies](#-technologies) | [Get the app](#-get-the-app) | [What it does](#-what-it-does) | [Quick start](#-quick-start) | [How a decision is made](#-how-a-decision-is-made) | [Verified behaviour](#-verified-behaviour) | [Repository layout](#-repository-layout) | [Not in this version](#-not-in-this-version) | [Licence notes](#-licence-notes)
 

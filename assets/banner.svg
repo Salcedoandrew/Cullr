@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="300" viewBox="0 0 1280 300" role="img" aria-label="Salcedo — tools that keep the frame">
+  <title>Salcedo — tools that keep the frame</title>
+  <defs>
+    <pattern id="sprocket" width="64" height="34" patternUnits="userSpaceOnUse">
+      <rect width="64" height="34" fill="#15171A"/>
+      <rect x="18" y="8" width="28" height="18" rx="3" fill="#2B2E33"/>
+    </pattern>
+    <linearGradient id="edge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#D8A24A" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#D8A24A" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#D8A24A" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="300" fill="#0B0C0E"/>
+  <rect width="1280" height="34" fill="url(#sprocket)"/>
+  <rect y="266" width="1280" height="34" fill="url(#sprocket)"/>
+  <rect y="41" width="1280" height="1" fill="url(#edge)"/>
+  <rect y="258" width="1280" height="1" fill="url(#edge)"/>
+
+  <text x="72" y="170" font-family="Helvetica Neue, Helvetica, Arial, sans-serif"
+        font-size="86" font-weight="700" letter-spacing="10" fill="#C8C4B8">SALCEDO</text>
+  <text x="76" y="208" font-family="SF Mono, Menlo, Consolas, monospace"
+        font-size="19" letter-spacing="3.5" fill="#8A857C">TOOLS THAT KEEP THE FRAME</text>
+
+  <g transform="translate(1146,148)" fill="none" stroke="#D8A24A" stroke-width="2" opacity="0.85">
+    <polygon points="0,-42 36.4,-21 36.4,21 0,42 -36.4,21 -36.4,-21"/>
+    <polygon points="0,-16 13.9,-8 13.9,8 0,16 -13.9,8 -13.9,-8" opacity="0.6"/>
+    <line x1="0" y1="-42" x2="0" y2="-16"/>
+    <line x1="36.4" y1="-21" x2="13.9" y2="-8"/>
+    <line x1="36.4" y1="21" x2="13.9" y2="8"/>
+    <line x1="0" y1="42" x2="0" y2="16"/>
+    <line x1="-36.4" y1="21" x2="-13.9" y2="8"/>
+    <line x1="-36.4" y1="-21" x2="-13.9" y2="-8"/>
+  </g>
+
+  <text x="1208" y="238" text-anchor="end" font-family="SF Mono, Menlo, monospace"
+        font-size="15" letter-spacing="2" fill="#5E5A54">04A · SALC</text>
+</svg>
