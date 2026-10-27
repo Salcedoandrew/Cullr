@@ -62,3 +62,32 @@ jobs:
 
       - name: Tests
         run: python -m pytest -q backend
+
+  ui:
+    # The count the cull options show, and the review loop around it, are
+    # frontend behaviour: no Python test can see them. The build also
+    # type-checks the page these tests render.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
