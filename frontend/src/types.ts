@@ -69,6 +69,9 @@ export interface Stats {
   blink: number;
   duplicates: number;
   exposure: number;
+  /** Files the scan could not read at all (the backend's `error` column).
+   *  Distinct from the rejection reasons: those frames were read and judged. */
+  errors: number;
   groups: number;
   persons: number;
   uncovered_persons: number;
@@ -263,6 +266,10 @@ export type FilterKey =
   | "all"
   | "keep"
   | "reject"
+  // Files that could not be read. The photos endpoint has accepted `errors`
+  // all along (`p.error IS NOT NULL`); nothing offered it in the UI, so a
+  // shoot full of unreadable RAW files could only be looked at as "Rejected".
+  | "errors"
   | "pick"
   | "duplicates"
   | "blur"

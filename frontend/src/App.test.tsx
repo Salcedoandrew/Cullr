@@ -106,7 +106,7 @@ const capabilities: Capabilities = {
   ],
 };
 
-const statsOf = (total: number): Stats => ({
+const statsOf = (total: number, over: Partial<Stats> = {}): Stats => ({
   total,
   keep: 0,
   reject: 0,
@@ -114,9 +114,11 @@ const statsOf = (total: number): Stats => ({
   blink: 0,
   duplicates: 0,
   exposure: 0,
+  errors: 0,
   groups: 0,
   persons: 0,
   uncovered_persons: 0,
+  ...over,
 });
 
 const jobOf = (over: Partial<Job> = {}): Job => ({

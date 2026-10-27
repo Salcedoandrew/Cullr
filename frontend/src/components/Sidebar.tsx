@@ -10,6 +10,11 @@ const FILTERS: { key: FilterKey; label: string; stat?: keyof Stats }[] = [
   { key: "all", label: "All frames", stat: "total" },
   { key: "keep", label: "Keepers", stat: "keep" },
   { key: "reject", label: "Rejected", stat: "reject" },
+  // Directly under Rejected, because that is where a user goes looking for why
+  // frames were dropped and "unreadable" is a different answer from "soft".
+  // On a healthy shoot the row would always read 0, so it is only rendered
+  // when there is something to look at.
+  { key: "errors", label: "Unreadable", stat: "errors" },
   { key: "duplicates", label: "Duplicates", stat: "duplicates" },
   { key: "blur", label: "Soft focus", stat: "blurry" },
   { key: "blink", label: "Eyes closed", stat: "blink" },
@@ -18,10 +23,13 @@ const FILTERS: { key: FilterKey; label: string; stat?: keyof Stats }[] = [
 ];
 
 export function Sidebar({ filter, stats, onChange }: Props) {
+  const rows = FILTERS.filter(
+    (item) => item.key !== "errors" || (stats?.errors ?? 0) > 0,
+  );
   return (
     <nav className="sidebar" aria-label="Review filters">
       <ul>
-        {FILTERS.map((item) => {
+        {rows.map((item) => {
           const count = item.stat && stats ? stats[item.stat] : null;
           return (
             <li key={item.key}>

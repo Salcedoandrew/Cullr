@@ -144,6 +144,27 @@ def test_stats_match_photo_rows(store, photo_dir):
     assert stats["total"] == len(rows)
     assert stats["keep"] == sum(1 for r in rows if r["verdict"] == "keep")
     assert stats["reject"] == sum(1 for r in rows if r["verdict"] == "reject")
+    assert stats["errors"] == sum(1 for r in rows if r["error"])
+
+
+def test_files_the_scan_could_not_read_are_their_own_filter(store, photo_dir):
+    """A frame rejected for soft focus was read and judged; a frame with an
+    error never was. Both end up in Rejected, and telling them apart is the
+    difference between "this shoot is soft" and "this build cannot read my
+    camera" -- which is what the sidebar's Unreadable row is for."""
+    broken = photo_dir / "IMG_9999.jpg"
+    broken.write_bytes(b"not a jpeg at all")
+    library_id, result = scan(store, photo_dir)
+
+    assert result.failed == 1
+    stats = store.stats(library_id)
+    assert stats["errors"] == 1
+    assert stats["reject"] == stats["total"] - stats["keep"]
+    assert stats["errors"] < stats["reject"], "the unreadable file is not a reason"
+
+    unreadable = store.photos(library_id, "errors")
+    assert [row["filename"] for row in unreadable] == ["IMG_9999.jpg"]
+    assert unreadable[0]["error"]
 
 
 def test_two_libraries_can_both_have_groups(store, photo_dir, tmp_path):

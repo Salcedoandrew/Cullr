@@ -718,7 +718,12 @@ class Store:
                 "SUM(CASE WHEN reason = 'blurry' THEN 1 ELSE 0 END) AS blurry, "
                 "SUM(CASE WHEN reason = 'closed_eyes' THEN 1 ELSE 0 END) AS blink, "
                 "SUM(CASE WHEN reason = 'duplicate' THEN 1 ELSE 0 END) AS duplicates, "
-                "SUM(CASE WHEN reason IN ('overexposed','underexposed') THEN 1 ELSE 0 END) AS exposure "
+                "SUM(CASE WHEN reason IN ('overexposed','underexposed') THEN 1 ELSE 0 END) AS exposure, "
+                # Files the scan could not read at all. Counted apart from the
+                # reasons on purpose: a frame rejected for soft focus was read
+                # and judged, one with an error never got judged, and only the
+                # second kind means something is wrong with the setup.
+                "SUM(CASE WHEN error IS NOT NULL THEN 1 ELSE 0 END) AS errors "
                 "FROM photos WHERE library_id = ? GROUP BY v", (library_id,)
             ).fetchall()
             groups = conn.execute(
@@ -735,6 +740,7 @@ class Store:
             ).fetchone()
         out = {"total": total["n"] if total else 0, "keep": 0, "reject": 0,
                "blurry": 0, "blink": 0, "duplicates": 0, "exposure": 0,
+               "errors": 0,
                "groups": groups["n"] if groups else 0,
                "persons": people["n"] if people else 0,
                "uncovered_persons": people["uncovered"] if people else 0}
@@ -747,6 +753,7 @@ class Store:
             out["blink"] += r["blink"] or 0
             out["duplicates"] += r["duplicates"] or 0
             out["exposure"] += r["exposure"] or 0
+            out["errors"] += r["errors"] or 0
         return out
 
 
