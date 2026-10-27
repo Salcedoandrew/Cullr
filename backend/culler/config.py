@@ -39,8 +39,11 @@ def resource_path(*parts: str) -> Path:
 
 ANALYSIS_LONG_EDGE = 1600
 THUMB_LONG_EDGE = 512
-# 2: per-face identity descriptors (people clustering) are part of analysis.
-ANALYSIS_VERSION = 2
+# 1: technical + face metrics. 2: per-face identity descriptors (people
+# clustering) are part of analysis. 3: subject-region sharpness, which the
+# ranking axis reads back from the stored row — a row analysed before it existed
+# would score differently from a fresh analysis, so it is re-analysed once.
+ANALYSIS_VERSION = 3
 
 IMAGE_EXTENSIONS = {
     ".jpg", ".jpeg", ".png", ".webp", ".tif", ".tiff", ".bmp",
@@ -82,7 +85,7 @@ def extensions_for_types(types: Any) -> set[str]:
 # from numerator AND denominator, so a landscape is never punished for having
 # no eyes (the pattern used by photo-pipeline's axis_composite_score).
 AXES = (
-    "sharpness", "exposure", "noise", "contrast",
+    "sharpness", "subject_sharpness", "exposure", "noise", "contrast",
     "eyes_open", "face_sharpness", "subject",
 )
 
@@ -108,9 +111,9 @@ PRESETS: dict[str, Preset] = {
         key="portrait",
         label="Portrait",
         description="Single subject, shallow depth of field. Eyes and face sharpness weighted heavily; soft backgrounds are not penalised.",
-        weights={"sharpness": 0.26, "exposure": 0.18, "noise": 0.06,
-                 "contrast": 0.06, "eyes_open": 0.22, "face_sharpness": 0.14,
-                 "subject": 0.08},
+        weights={"sharpness": 0.26, "subject_sharpness": 0.04, "exposure": 0.18,
+                 "noise": 0.06, "contrast": 0.06, "eyes_open": 0.22,
+                 "face_sharpness": 0.14, "subject": 0.08},
         strictness=50,
         keep_min_per_group=1,
         eyes_closed_max=4.0,
@@ -120,9 +123,9 @@ PRESETS: dict[str, Preset] = {
         key="wedding",
         label="Wedding / event",
         description="Many faces per frame, emotion matters. Lenient on softness because shallow depth of field is normal, strict on closed eyes.",
-        weights={"sharpness": 0.24, "exposure": 0.16, "noise": 0.05,
-                 "contrast": 0.05, "eyes_open": 0.26, "face_sharpness": 0.14,
-                 "subject": 0.10},
+        weights={"sharpness": 0.24, "subject_sharpness": 0.05, "exposure": 0.16,
+                 "noise": 0.05, "contrast": 0.05, "eyes_open": 0.26,
+                 "face_sharpness": 0.14, "subject": 0.10},
         strictness=35,
         keep_min_per_group=1,
         eyes_closed_max=5.0,
@@ -132,9 +135,9 @@ PRESETS: dict[str, Preset] = {
         key="event",
         label="Event / documentary",
         description="Mixed subjects and venues. Balanced gates; tolerates some motion as long as a frame in the group is sharp.",
-        weights={"sharpness": 0.30, "exposure": 0.20, "noise": 0.08,
-                 "contrast": 0.08, "eyes_open": 0.16, "face_sharpness": 0.10,
-                 "subject": 0.08},
+        weights={"sharpness": 0.30, "subject_sharpness": 0.05, "exposure": 0.20,
+                 "noise": 0.08, "contrast": 0.08, "eyes_open": 0.16,
+                 "face_sharpness": 0.10, "subject": 0.08},
         strictness=50,
         keep_min_per_group=1,
         eyes_closed_max=4.0,
@@ -144,9 +147,9 @@ PRESETS: dict[str, Preset] = {
         key="sports",
         label="Sports / action",
         description="Fast bursts, motion blur is often intentional. Non-face blur allowed; the sharpest frame in each burst wins.",
-        weights={"sharpness": 0.34, "exposure": 0.18, "noise": 0.05,
-                 "contrast": 0.05, "eyes_open": 0.10, "face_sharpness": 0.12,
-                 "subject": 0.16},
+        weights={"sharpness": 0.34, "subject_sharpness": 0.04, "exposure": 0.18,
+                 "noise": 0.05, "contrast": 0.05, "eyes_open": 0.10,
+                 "face_sharpness": 0.12, "subject": 0.16},
         strictness=85,
         keep_min_per_group=1,
         eyes_closed_max=2.0,
@@ -156,8 +159,8 @@ PRESETS: dict[str, Preset] = {
         key="landscape",
         label="Landscape / travel",
         description="No faces: eyes axes are absent and therefore ignored. Sharpness and dynamic range dominate.",
-        weights={"sharpness": 0.40, "exposure": 0.24, "noise": 0.12,
-                 "contrast": 0.16, "subject": 0.08},
+        weights={"sharpness": 0.40, "subject_sharpness": 0.08, "exposure": 0.24,
+                 "noise": 0.12, "contrast": 0.16, "subject": 0.08},
         strictness=60,
         keep_min_per_group=1,
         eyes_closed_max=0.0,

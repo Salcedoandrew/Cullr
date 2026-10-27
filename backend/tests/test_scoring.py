@@ -7,10 +7,11 @@ from culler.scoring import composite, score_photo, technical_reason
 
 
 def tech(sharp=120.0, clip_hi=0.0, clip_lo=0.02, mean=0.5, noise=4.0,
-         contrast=60.0) -> TechnicalMetrics:
+         contrast=60.0, subject=None) -> TechnicalMetrics:
     return TechnicalMetrics(
         sharpness=sharp, tenengrad=sharp * 60, clip_hi=clip_hi, clip_lo=clip_lo,
         mean_luma=mean, p95_luma=0.9, noise=noise, contrast=contrast,
+        subject_sharpness=subject,
     )
 
 
@@ -178,6 +179,29 @@ def test_strictness_raises_the_face_gate():
     strict = CullingSettings(preset="portrait", strictness=100)
     assert strict.gates().face_blur > lenient.gates().face_blur
     assert strict.gates().eyes_closed_max < lenient.gates().eyes_closed_max
+
+
+def test_subject_sharpness_ranks_a_sharp_subject_over_a_soft_one():
+    settings = CullingSettings(preset="landscape")
+    sharp = score_photo(tech(sharp=120, subject=140.0), face_metrics(), settings)
+    soft = score_photo(tech(sharp=120, subject=4.0), face_metrics(), settings)
+    assert sharp.axes["subject_sharpness"] is not None
+    assert sharp.axes["subject_sharpness"] > soft.axes["subject_sharpness"]
+    assert sharp.quality > soft.quality
+
+
+def test_subject_sharpness_is_absent_when_a_face_measures_the_subject():
+    # With a usable face the face crop is the subject: counting a centre crop as
+    # well would weigh sharpness twice.
+    faces = face_metrics(eyes=9.0, sharpness=400)
+    result = score_photo(tech(subject=140.0), faces, CullingSettings(preset="portrait"))
+    assert result.axes["subject_sharpness"] is None
+
+
+def test_subject_sharpness_never_rejects_on_its_own():
+    settings = CullingSettings()
+    soft_subject = tech(sharp=60.0, subject=1.0)
+    assert technical_reason(soft_subject, face_metrics(), gate(settings), settings) is None
 
 
 def test_quality_is_bounded():

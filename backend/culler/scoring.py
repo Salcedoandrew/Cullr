@@ -26,6 +26,12 @@ SHARPNESS_LO = 8.0
 SHARPNESS_HI = 400.0
 FACE_SHARPNESS_LO = 25.0
 FACE_SHARPNESS_HI = 450.0
+# Centre-crop variance needs its own window: the crop sits on the subject, so it
+# measures higher than the frame-wide value at the same acuity. Measured on 40
+# frames of a real 72-frame wedding set at 1600 px: 3.7 / 34.3 / 155.5
+# (min / median / max), and 1.5-7.3 after a 2 px Gaussian blur.
+SUBJECT_SHARPNESS_LO = 6.0
+SUBJECT_SHARPNESS_HI = 200.0
 
 # A face smaller than this is background crowd, not a subject: its crop has to
 # be upscaled to be measured, so its sharpness is not trustworthy.
@@ -109,6 +115,20 @@ def contrast_axis(tech: TechnicalMetrics) -> float:
     return float(max(0.0, min(1.0, tech.contrast / 62.0)))
 
 
+def subject_sharpness_axis(tech: TechnicalMetrics, faces: FaceMetrics) -> float | None:
+    """Subject focus for frames where no face can carry it.
+
+    facet measures sharpness inside a segmentation mask; cullr uses a centre
+    crop (``metrics/technical.py``, ported from facet's saliency metrics). When
+    a usable face is present the face crop already measures the subject, so the
+    axis is dropped from the composite instead of counting sharpness twice.
+    Ranker only: a soft subject costs rank, never a rejection (no new reason).
+    """
+    if faces.usable or tech.subject_sharpness is None:
+        return None
+    return _log_norm(tech.subject_sharpness, SUBJECT_SHARPNESS_LO, SUBJECT_SHARPNESS_HI)
+
+
 def eyes_axis(faces: FaceMetrics) -> float | None:
     value = faces.worst_eyes_open
     if value is None:
@@ -128,6 +148,7 @@ def subject_axis(faces: FaceMetrics) -> float | None:
 def build_axes(tech: TechnicalMetrics, faces: FaceMetrics) -> dict[str, float | None]:
     return {
         "sharpness": sharpness_axis(tech.sharpness),
+        "subject_sharpness": subject_sharpness_axis(tech, faces),
         "exposure": exposure_axis(tech, faces),
         "noise": noise_axis(tech),
         "contrast": contrast_axis(tech),

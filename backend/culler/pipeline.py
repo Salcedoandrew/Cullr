@@ -74,6 +74,8 @@ class AnalysedPhoto:
             "mean_luma": tech.mean_luma if tech else None,
             "noise": tech.noise if tech else None,
             "contrast": tech.contrast if tech else None,
+            "subject_sharpness": tech.subject_sharpness if tech else None,
+            "bg_separation": tech.bg_separation if tech else None,
             "face_count": faces.count,
             "eyes_open": faces.eyes_open,
             "worst_eyes_open": faces.worst_eyes_open,
@@ -606,6 +608,10 @@ def _from_row(row: dict, faces: list[dict]) -> AnalysedPhoto:
         p95_luma=0.0,
         noise=row.get("noise") or 0.0,
         contrast=row.get("contrast") or 0.0,
+        # None means "no subject region measured" (old row, or a tiny frame),
+        # which drops the axis instead of scoring it as 0.
+        subject_sharpness=row.get("subject_sharpness"),
+        bg_separation=row.get("bg_separation"),
     )
     face_objs = [
         Face(

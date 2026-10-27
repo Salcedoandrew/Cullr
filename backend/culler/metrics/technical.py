@@ -16,6 +16,12 @@ Design notes
   ``scoring.py`` rather than here, since that decision needs the face boxes.
 * Noise uses Immerkaer's fast estimator on a centre crop, so vignetting and
   border artefacts do not dominate.
+* Subject sharpness stands in for facet's saliency mask without a 2.4 GB
+  segmentation model: the middle 50 % of the frame is the subject region
+  (`centre_crop`), and its Laplacian variance is reported raw (for the axis
+  window in ``scoring.py``) and in facet's 0..10 normalisation. Ported from
+  facet `models/saliency_scorer.py` (MIT): `subject_sharpness`,
+  `bg_separation`. See NOTICE.md.
 """
 
 from __future__ import annotations
@@ -41,6 +47,11 @@ class TechnicalMetrics:
     p95_luma: float
     noise: float              # sigma estimate on the 0..255 scale
     contrast: float           # luma standard deviation on the 0..255 scale
+    # Centre-crop Laplacian variance; None when the frame is too small for a
+    # crop. Rows read back from the catalog predate these columns, so both are
+    # optional.
+    subject_sharpness: float | None = None
+    bg_separation: float | None = None   # min(10, centre/frame variance * 2)
 
     def to_dict(self) -> dict:
         return {
@@ -52,6 +63,12 @@ class TechnicalMetrics:
             "p95_luma": round(self.p95_luma, 4),
             "noise": round(self.noise, 3),
             "contrast": round(self.contrast, 3),
+            "subject_sharpness": (None if self.subject_sharpness is None
+                                 else round(self.subject_sharpness, 3)),
+            "subject_sharpness_10": (None if self.subject_sharpness is None
+                                     else round(subject_sharpness_score(self.subject_sharpness), 3)),
+            "bg_separation": (None if self.bg_separation is None
+                              else round(self.bg_separation, 3)),
         }
 
 
@@ -60,6 +77,49 @@ def laplacian_variance(gray: np.ndarray, denoise_sigma: float = 0.8) -> float:
     if denoise_sigma > 0:
         gray = cv2.GaussianBlur(gray, (0, 0), denoise_sigma)
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+# The subject region, as a fraction of each side. Wedding subjects are usually
+# centred, and a blurred background cannot drag this measure down the way it
+# drags the frame-wide one (docs/RESEARCH.md 4.4).
+SUBJECT_CROP_RATIO = 0.5
+SUBJECT_CROP_MIN_SIDE = 32
+
+
+def centre_crop(gray: np.ndarray, ratio: float = SUBJECT_CROP_RATIO) -> np.ndarray | None:
+    """The middle ``ratio`` of the frame, or None when it would be a sliver."""
+    h, w = gray.shape[:2]
+    ch, cw = int(h * ratio), int(w * ratio)
+    if ch < SUBJECT_CROP_MIN_SIDE or cw < SUBJECT_CROP_MIN_SIDE:
+        return None
+    y0, x0 = (h - ch) // 2, (w - cw) // 2
+    return gray[y0:y0 + ch, x0:x0 + cw]
+
+
+def subject_sharpness_score(variance: float) -> float:
+    """facet's 0..10 normalisation: ``min(10, sqrt(variance) / 7)``.
+
+    Ported from facet `models/saliency_scorer.py` (MIT), which measures the
+    variance inside a BiRefNet subject mask; here the region is a centre crop.
+    """
+    return float(min(10.0, np.sqrt(max(float(variance), 0.0)) / 7.0))
+
+
+def subject_region_sharpness(gray: np.ndarray) -> tuple[float | None, float | None]:
+    """(centre-crop variance, bg_separation) for the subject region.
+
+    ``bg_separation`` is facet's ``min(10, subject/bg ratio * 2)`` collapsed to
+    one ratio: a shallow-DoF portrait separates its subject 3-8x, a landscape
+    sits near 1x. Computed against the whole frame rather than a true
+    background mask, so treat it as a hint, not a measurement.
+    """
+    crop = centre_crop(gray)
+    if crop is None:
+        return None, None
+    subject = laplacian_variance(crop)
+    frame = laplacian_variance(gray)
+    separation = 0.0 if frame <= 0 else min(10.0, (subject / frame) * 2.0)
+    return subject, separation
 
 
 def tenengrad(gray: np.ndarray) -> float:
@@ -84,6 +144,7 @@ def immerkaer_noise(gray: np.ndarray, min_side: int = 128) -> float:
 def analyse(bgr: np.ndarray) -> TechnicalMetrics:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
     total = float(gray.size) or 1.0
+    subject, separation = subject_region_sharpness(gray)
     hist = np.bincount(gray.ravel(), minlength=256).astype(np.float64) / total
     clip_hi = float(hist[250:].sum())
     clip_lo = float(hist[:6].sum())
@@ -100,4 +161,6 @@ def analyse(bgr: np.ndarray) -> TechnicalMetrics:
         p95_luma=p95,
         noise=immerkaer_noise(gray),
         contrast=contrast,
+        subject_sharpness=subject,
+        bg_separation=separation,
     )

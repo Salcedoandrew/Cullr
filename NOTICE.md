@@ -9,7 +9,7 @@ informed this implementation and are credited here.
 | Project | Licence | What informed this implementation |
 | --- | --- | --- |
 | [viktordrukker/photo-pipeline](https://github.com/viktordrukker/photo-pipeline) (Viktor Drukker) | MIT | Weighted composite that drops inapplicable axes; thread-pooled technical screen; EXIF burst pre-clustering; multi-hash voting with union-find; genre presets. |
-| [facet](https://github.com/ncoevoet/facet) (Nicolas Coevoet) | MIT | Eyes-open score scale and 4.0/10 closed-eye cutoff; pose gate for unreliable eye geometry; blendshape-based blink scoring; two-stage pHash + embedding duplicate gate; bounded best-of-group tie-breaks; per-genre cull profiles; subject-region exposure reasoning. |
+| [facet](https://github.com/ncoevoet/facet) (Nicolas Coevoet) | MIT | Eyes-open score scale and 4.0/10 closed-eye cutoff; pose gate for unreliable eye geometry; blendshape-based blink scoring; two-stage pHash + embedding duplicate gate; bounded best-of-group tie-breaks; per-genre cull profiles; subject-region exposure reasoning; subject-region sharpness from a centre crop (facet's `sqrt(variance)/7` normalisation and background-separation ratio, minus the BiRefNet mask). |
 | [retoucan](https://github.com/joemalott/retoucan) (Joe Malott) | MIT | Desktop app shape (local-first, no uploads); XMP/Lightroom round-trip expectations; compact interpretable per-photo feature vectors. |
 | [AI-POWERED-PHOTO-CULLING](https://github.com/sundhars2823/AI-POWERED-PHOTO-CULLING) | **none** | Read for context only. No code, thresholds or structure were reused: the repository has no licence, so it is all rights reserved. |
 

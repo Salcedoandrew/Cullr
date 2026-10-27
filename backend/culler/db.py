@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS photos (
     iso INTEGER, shutter REAL, aperture REAL, focal_len REAL,
     sharpness REAL, tenengrad REAL, clip_hi REAL, clip_lo REAL,
     mean_luma REAL, noise REAL, contrast REAL,
+    subject_sharpness REAL, bg_separation REAL,
     face_count INTEGER DEFAULT 0,
     eyes_open REAL, worst_eyes_open REAL, blink INTEGER DEFAULT 0,
     smile REAL, face_sharpness REAL, frontal REAL, face_ratio REAL,
@@ -166,6 +167,9 @@ class Store:
         photos = {row["name"] for row in conn.execute("PRAGMA table_info(photos)")}
         if "covered_person" not in photos:
             conn.execute("ALTER TABLE photos ADD COLUMN covered_person INTEGER")
+        for column in ("subject_sharpness", "bg_separation"):
+            if column not in photos:
+                conn.execute(f"ALTER TABLE photos ADD COLUMN {column} REAL")
         people = {row["name"] for row in conn.execute("PRAGMA table_info(persons)")}
         if "required" not in people:
             conn.execute("ALTER TABLE persons ADD COLUMN required INTEGER NOT NULL DEFAULT 0")
@@ -335,7 +339,8 @@ class Store:
         cols = [
             "width", "height", "captured_at", "camera", "lens", "iso", "shutter",
             "aperture", "focal_len", "sharpness", "tenengrad", "clip_hi", "clip_lo",
-            "mean_luma", "noise", "contrast", "face_count", "eyes_open",
+            "mean_luma", "noise", "contrast", "subject_sharpness",
+            "bg_separation", "face_count", "eyes_open",
             "worst_eyes_open", "blink", "smile", "face_sharpness", "frontal",
             "face_ratio", "phash", "dhash", "error",
         ]
@@ -367,6 +372,7 @@ class Store:
             rows = conn.execute(
                 "SELECT id, path, filename, captured_at, phash, dhash, sharpness, "
                 "tenengrad, clip_hi, clip_lo, mean_luma, noise, contrast, "
+                "subject_sharpness, bg_separation, "
                 "face_count, eyes_open, worst_eyes_open, smile, face_sharpness, "
                 "frontal, face_ratio, error, analysis_version, content_key "
                 "FROM photos WHERE library_id = ? ORDER BY path", (library_id,)
@@ -750,6 +756,8 @@ def serialize_photo(row: dict, faces: list[dict] | None = None) -> dict:
         "is_lead": bool(row.get("is_lead")),
         "covered_person": row.get("covered_person"),
         "sharpness": row.get("sharpness"),
+        "subject_sharpness": row.get("subject_sharpness"),
+        "bg_separation": row.get("bg_separation"),
         "exposure": row.get("mean_luma"),
         "clip_hi": row.get("clip_hi"),
         "clip_lo": row.get("clip_lo"),
