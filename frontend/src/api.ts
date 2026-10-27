@@ -48,6 +48,9 @@ export const api = {
   latestJob: (id: number) => request<Job | Record<string, never>>(`/api/libraries/${id}/job`),
   job: (jobId: number) => request<Job>(`/api/jobs/${jobId}`),
 
+  discover: (id: number) =>
+    request<{ total: number }>(`/api/libraries/${id}/discover`, { method: "POST" }),
+
   photos: (
     id: number,
     filter: FilterKey,

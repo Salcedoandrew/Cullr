@@ -26,7 +26,7 @@ from .config import (
     IMPORT_TYPE_LABELS, PRESETS, THUMB_LONG_EDGE, CullingSettings, resource_path,
 )
 from .db import Store, default_data_dir, serialize_photo
-from .imaging import render_jpeg
+from .imaging import iter_images, render_jpeg
 from .metrics.faces import FaceAnalyzer
 from .persons import clusters_from_rows, propose_merges
 from .pipeline import run_scan
@@ -497,6 +497,41 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         settings = CullingSettings.from_dict(body.settings)
         job = runner.start(library_id, settings, body.force)
         return job
+
+    @app.post("/api/libraries/{library_id}/discover")
+    def discover(library_id: int) -> dict:
+        """Count the photos the import will process, before any scan runs.
+
+        A names-only directory walk with the library's stored import options
+        (recursive flag, type filter) — no file contents are read, nothing is
+        analysed or copied, and the originals are never touched. The pre-cull
+        window shows this total so the target reads "~20% of 5,745 photos"
+        instead of 0. When ingest is on and the source is gone but a working
+        copy exists, count the working copy, the same fallback the scan uses.
+        """
+        library = store.get_library(library_id)
+        if not library:
+            raise HTTPException(404, "library not found")
+        settings = CullingSettings.from_dict(
+            _json_or_none(library.get("settings_json")))
+        root = Path(library["root_path"])
+        effective_root = root
+        if settings.ingest:
+            working = store.ingest_root(library_id)
+            if root.is_dir():
+                effective_root = root
+            elif working.is_dir() and any(working.iterdir()):
+                effective_root = working
+            else:
+                raise HTTPException(400, f"not a directory: {root}")
+        elif not root.is_dir():
+            raise HTTPException(400, f"not a directory: {root}")
+        try:
+            total = len(iter_images(effective_root, recursive=settings.recursive,
+                                    extensions=settings.import_extensions()))
+        except OSError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        return {"total": total}
 
     @app.get("/api/libraries/{library_id}/job")
     def latest_job(library_id: int) -> dict:

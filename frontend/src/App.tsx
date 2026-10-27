@@ -67,6 +67,7 @@ export default function App() {
   const [job, setJob] = useState<Job | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [cullOpen, setCullOpen] = useState(false);
+  const [discoveredTotal, setDiscoveredTotal] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const busy = job?.status === "running";
@@ -183,6 +184,15 @@ export default function App() {
         setSettings(active);
         setFilter("all");
         setPersonId(null);
+        // Count the import set first, so the cull options show the real
+        // total instead of 0. Discovery is a names-only walk; if it fails
+        // the dialog still opens and falls back to the percent-only display.
+        try {
+          const found = await api.discover(created.id);
+          setDiscoveredTotal(found.total);
+        } catch {
+          setDiscoveredTotal(null);
+        }
         // No auto-cull: the cull options open first, and the job starts only
         // when the user presses Start Cull in that window.
         setCullOpen(true);
@@ -352,6 +362,7 @@ export default function App() {
           setLibrary(chosen);
           setFilter("all");
           setPersonId(null);
+          setDiscoveredTotal(null);
         }}
       />
     );
@@ -415,7 +426,13 @@ export default function App() {
         <span><kbd>x</kbd> reject</span>
         <span><kbd>1</kbd>–<kbd>5</kbd> stars</span>
         <span><kbd>g</kbd> next group</span>
-        <button type="button" onClick={() => setLibrary(null)}>
+        <button
+          type="button"
+          onClick={() => {
+            setLibrary(null);
+            setDiscoveredTotal(null);
+          }}
+        >
           Change folder
         </button>
       </footer>
@@ -436,6 +453,7 @@ export default function App() {
       {cullOpen && (
         <CullDialog
           stats={stats}
+          discoveredTotal={discoveredTotal}
           settings={settings}
           capabilities={capabilities}
           busy={busy}

@@ -15,6 +15,8 @@ import type { Capabilities, Settings, Stats } from "../types";
 
 interface Props {
   stats: Stats | null;
+  /** Photos counted at import, before any scan. Used only while stats is null. */
+  discoveredTotal?: number | null;
   settings: Settings;
   capabilities: Capabilities;
   busy: boolean;
@@ -111,10 +113,12 @@ function helperText(ratio: number): string {
 }
 
 export function CullDialog({
-  stats, settings, capabilities, busy, onChange, onStart, onOpenExport, onClose,
+  stats, discoveredTotal, settings, capabilities, busy, onChange, onStart, onOpenExport, onClose,
 }: Props) {
   const preset = capabilities.presets.find((option) => option.key === settings.preset);
-  const total = stats?.total ?? 0;
+  // A scan that already ran knows the real total; before the first scan the
+  // count from import stands in, so the target never reads 0.
+  const total = stats?.total ?? discoveredTotal ?? 0;
 
   const [targetMode, setTargetMode] = useState(settings.target_ratio !== null);
   const [ratio, setRatio] = useState(settings.target_ratio ?? DEFAULT_RATIO);
