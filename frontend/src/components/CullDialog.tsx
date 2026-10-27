@@ -522,22 +522,8 @@ export function CullDialog({
             Customize
           </summary>
           <div className="cull__advanced">
-            <label className="cull__field cull__field--inline">
-              <span>Keep at least per group</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={settings.keep_min_per_group ?? 1}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    keep_min_per_group: Math.max(1, Number(event.target.value) || 1),
-                  })
-                }
-              />
-            </label>
-
+            {/* The four Detect toggles first, in Aftershoot's order; Cullr's
+                own extras (keep-min, coverage, re-analyse) follow them. */}
             <DetectToggle
               label="Detect Duplicates"
               info="Groups near-identical frames so only the best of each burst is kept."
@@ -609,6 +595,23 @@ export function CullDialog({
               checked={settings.detect_blinks}
               onChange={(value) => onChange({ ...settings, detect_blinks: value })}
             />
+
+            <label className="cull__field cull__field--inline">
+              <span>Keep at least per group</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={settings.keep_min_per_group ?? 1}
+                onChange={(event) =>
+                  onChange({
+                    ...settings,
+                    keep_min_per_group: Math.max(1, Number(event.target.value) || 1),
+                  })
+                }
+              />
+            </label>
+
             <label className="cull__check">
               <input
                 type="checkbox"
