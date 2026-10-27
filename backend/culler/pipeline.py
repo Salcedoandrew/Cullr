@@ -185,6 +185,12 @@ def plan(photos: list[AnalysedPhoto], settings: CullingSettings) -> PlanResult:
     ``PlanResult.groups`` are the DB-ready group records with stable 1-based
     ids; ``signals`` covers every photo so person coverage can rank frames that
     are not group leads.
+
+    Scoring and selection are separate passes so the Auto Target stop's
+    keep fraction can be applied between them: the floor needs the whole
+    shoot's composite distribution, and a frame below it must not be
+    selectable as a group lead (`select` only considers frames with no
+    reason).
     """
     items = [
         SimilarityItem(
@@ -204,22 +210,38 @@ def plan(photos: list[AnalysedPhoto], settings: CullingSettings) -> PlanResult:
     selections: dict[int, GroupSelection] = {}
     group_rows: list[dict] = []
     membership: dict[int, list[int]] = {}
+    group_members: dict[int, tuple[list[AnalysedPhoto], str]] = {}
 
-    grouped_ids: set[int] = set()
+    # ---- 1. score every frame -------------------------------------------- #
     for idx, group in enumerate(groups, start=1):
         members = [by_id[pid] for pid in group.member_ids if pid in by_id]
         if len(members) < 2:
             continue
+        group_members[idx] = (members, group.kind)
         median = group_median_sharpness([m.tech.sharpness for m in members if m.tech])
-        signals: list[SelectionSignals] = []
         for member in members:
-            score = score_photo(
+            scores[member.photo_id] = score_photo(
                 member.tech, member.faces, settings, median,
                 relative_to_group=True,
             ) if member.tech else PhotoScore(
                 verdict="reject", reason="unreadable")
-            scores[member.photo_id] = score
-            signalled = _selection_signals(member, score)
+
+    # Ungrouped photos are scored on their own (no relative blur gate).
+    for photo in photos:
+        if photo.photo_id in scores:
+            continue
+        scores[photo.photo_id] = score_photo(
+            photo.tech, photo.faces, settings) if photo.tech else PhotoScore(
+                verdict="reject", reason="unreadable")
+
+    # ---- 2. the Auto Target floor ---------------------------------------- #
+    apply_selection_floor(scores, settings)
+
+    # ---- 3. signals and best-of-group selection -------------------------- #
+    for idx, (members, kind) in group_members.items():
+        signals: list[SelectionSignals] = []
+        for member in members:
+            signalled = _selection_signals(member, scores[member.photo_id])
             signals.append(signalled)
             signals_all[member.photo_id] = signalled
         gates = settings.gates()
@@ -227,30 +249,55 @@ def plan(photos: list[AnalysedPhoto], settings: CullingSettings) -> PlanResult:
                            gates.keep_min_per_group)
         selections[idx] = selection
         membership[idx] = [m.photo_id for m in members]
-        grouped_ids.update(group.member_ids)
         lead_score = max((s.quality for s in signals
                           if s.photo_id == selection.lead_id), default=0.0)
         group_rows.append({
             "id": idx,
-            "kind": group.kind,
+            "kind": kind,
             "size": len(members),
             "lead_id": selection.lead_id,
             "lead_score": round(lead_score, 4),
         })
 
-    # Ungrouped photos are scored on their own (no relative blur gate).
     for photo in photos:
-        if photo.photo_id in grouped_ids:
+        if photo.photo_id in signals_all:
             continue
-        if photo.tech is None:
-            scores[photo.photo_id] = PhotoScore(verdict="reject", reason="unreadable")
-        else:
-            scores[photo.photo_id] = score_photo(photo.tech, photo.faces, settings)
         signals_all[photo.photo_id] = _selection_signals(photo,
                                                          scores[photo.photo_id])
 
     return PlanResult(groups=group_rows, scores=scores, signals=signals_all,
                       selections=selections, membership=membership)
+
+
+def apply_selection_floor(scores: dict[int, PhotoScore],
+                          settings: CullingSettings) -> float | None:
+    """Reject the frames below the Auto Target stop's keep fraction.
+
+    The floor is a percentile of the frames that passed the gates, not a fixed
+    composite: the composite is a weighted mean of 0..1 axes and its spread
+    depends on the shoot (this wedding sits between 0.33 and 0.79), so an
+    absolute cut-off would keep everything on one library and nothing on the
+    next. Ranking against the shoot's own distribution is also what makes the
+    stops behave like Aftershoot's keeper-count control.
+
+    Rejections carry the existing ``target`` reason -- the same "trimmed to the
+    selection you asked for" explanation the cull-to-target cap uses -- so no
+    new rejection reason enters the data model.
+
+    Returns the threshold it used, or None when no floor applies.
+    """
+    fraction = settings.selection_keep_fraction()
+    if fraction is None:
+        return None
+    passing = sorted(s.quality for s in scores.values() if s.reason is None)
+    if len(passing) < 2:
+        return None
+    keep_count = max(1, int(round(fraction * len(passing))))
+    threshold = passing[len(passing) - keep_count]
+    for score in scores.values():
+        if score.reason is None and score.quality < threshold:
+            score.verdict, score.reason = "reject", "target"
+    return threshold
 
 
 # --------------------------------------------------------------------------- #

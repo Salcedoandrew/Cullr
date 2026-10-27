@@ -186,17 +186,50 @@ DEFAULT_PRESET = "wedding"
 # Portrait/Event middle, STANDARD is the Wedding default, MORE is lenient enough
 # that only clearly bad frames are dropped. The UI shows the name, never a
 # number, and `strictness_stops()` is the one definition both sides read.
-SELECTION_STOPS: tuple[tuple[str, str, int], ...] = (
-    ("extreme", "EXTREME", 85),
-    ("few", "FEW", 60),
-    ("standard", "STANDARD", 35),
-    ("more", "MORE", 15),
+#
+# Each stop carries a keep fraction as well, because the gate scaling alone
+# cannot move a shoot's keeper count: measured on a real 5,745-frame wedding
+# (Uslea + Ernesto, wedding preset), gates-only kept 19.9% at EXTREME and 21.5%
+# at MORE -- and sweeping the whole 0..100 range moved it only 18.4%..21.6%.
+# Two thirds of the rejections are best-of-group demotions, which no gate
+# touches, so a looser stop's extra survivors just become duplicates inside
+# groups that already keep a frame. The keep fraction is applied after the
+# gates (Auto Target mode only; Cull to Target sets its own count) and is what
+# makes the scale mean what the dialog says: keep the strongest 25 / 45 / 70%
+# of the frames that passed, or, at MORE, everything that passed. Measured end
+# to end on that same wedding: 288 kept (5.0%) / 532 (9.3%) / 847 (14.7%) /
+# 1,233 (21.5%). STANDARD lands on the 14% (804 frames) the photographer kept by
+# hand. The cost of a tighter stop is real and measured: at STANDARD 680 of his
+# 804 picks still survive (94 kept exactly, 586 demoted inside a group that kept
+# another frame) and 124 lose their moment; at MORE only 24 do. The floor is
+# calibrated on the count, not on his taste -- see docs/RESEARCH.md 6 for why
+# the learned ranker, not a tighter threshold, is the answer to that gap.
+SELECTION_STOPS: tuple[tuple[str, str, int, float | None], ...] = (
+    ("extreme", "EXTREME", 85, 0.25),
+    ("few", "FEW", 60, 0.45),
+    ("standard", "STANDARD", 35, 0.70),
+    ("more", "MORE", 15, None),
 )
 
 
 def strictness_stops() -> list[dict[str, Any]]:
     return [{"key": key, "label": label, "value": value}
-            for key, label, value in SELECTION_STOPS]
+            for key, label, value, _share in SELECTION_STOPS]
+
+
+def stop_keep_fraction(strictness: int | None) -> float | None:
+    """How much of the gate-passing shoot a named stop keeps.
+
+    The stop is defined by its gate-strictness value, so a hand-written value
+    (the CLI takes any 0..100) matches no stop and gets gates only, exactly the
+    behaviour libraries had before the stops existed.
+    """
+    if strictness is None:
+        return None
+    for _key, _label, value, share in SELECTION_STOPS:
+        if value == int(strictness):
+            return share
+    return None
 
 
 # ---- The XMP rating scheme ------------------------------------------------ #
@@ -351,6 +384,17 @@ class CullingSettings:
         if self.selection_strictness is not None:
             return int(self.selection_strictness)
         return self.resolved_preset().strictness
+
+    def selection_keep_fraction(self) -> float | None:
+        """The share of gate-passing frames the Auto Target stop keeps.
+
+        None when no stop is selected (the preset alone decides, so a library
+        that never opened the dialog scores exactly as before) and None in Cull
+        to Target mode, where the target ratio is already the count control.
+        """
+        if self.target_ratio:
+            return None
+        return stop_keep_fraction(self.selection_strictness)
 
     def blur_strictness(self) -> int:
         """The blur-only strictness: the Customize slider, else the overall."""

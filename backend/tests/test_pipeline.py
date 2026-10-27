@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import pytest
 
 from culler.config import CullingSettings
 from culler.db import Store
-from culler.pipeline import run_scan
+from culler.metrics.faces import FaceMetrics
+from culler.metrics.technical import TechnicalMetrics
+from culler.imaging import ImageMeta
+from culler.pipeline import AnalysedPhoto, plan, run_scan
 
 
 @pytest.fixture
@@ -157,6 +161,79 @@ def test_two_libraries_can_both_have_groups(store, photo_dir, tmp_path):
     second_groups = {r["group_id"] for r in store.photos(second_id) if r["group_id"]}
     assert first_groups and second_groups
     assert first_groups.isdisjoint(second_groups)
+
+
+def measured_frame(photo_id: int, sharpness: float, phash: str | None = None,
+                   captured_at: float | None = None) -> AnalysedPhoto:
+    """A stand-in analysed frame: sharpness is the only thing varying."""
+    return AnalysedPhoto(
+        photo_id=photo_id,
+        path=f"/shoot/{photo_id}.jpg",
+        filename=f"{photo_id}.jpg",
+        meta=ImageMeta(width=1200, height=800, captured_at=captured_at),
+        tech=TechnicalMetrics(
+            sharpness=sharpness, tenengrad=sharpness * 60, clip_hi=0.0,
+            clip_lo=0.02, mean_luma=0.5, p95_luma=0.9, noise=4.0, contrast=60.0,
+        ),
+        faces=FaceMetrics(faces=[]),
+        phash=phash or hashlib.sha1(str(photo_id).encode()).hexdigest()[:16],
+        dhash=phash or hashlib.sha1(str(photo_id).encode()).hexdigest()[:16],
+    )
+
+
+def test_the_auto_target_stop_sets_how_many_frames_survive():
+    """The floor is what makes the stop's name true -- not the gate scaling.
+
+    Gates alone move this set by nothing measurable (every frame is clean, only
+    its sharpness -- and so its composite -- differs), which is exactly what the
+    real-shoot measurement showed: 19.9% kept at EXTREME versus 21.5% at MORE
+    across a 5,745-frame wedding. The keep fraction turns the same set into
+    2/4/7/10 survivors.
+    """
+    photos = [measured_frame(i + 1, sharp)
+              for i, sharp in enumerate((20, 40, 60, 80, 100, 140, 180, 240, 320, 400))]
+
+    def survivors(value: int) -> set[int]:
+        settings = CullingSettings(preset="wedding", selection_strictness=value)
+        result = plan(photos, settings)
+        return {pid for pid, score in result.scores.items() if score.reason is None}
+
+    assert tuple(len(survivors(v)) for v in (85, 60, 35, 15)) == (2, 4, 7, 10)
+    # The survivors are the strongest frames, not an arbitrary subset.
+    best = max(photos, key=lambda p: p.tech.sharpness).photo_id
+    assert survivors(85) == {best - 1, best}
+
+
+def test_the_floor_empties_a_group_whose_best_frame_is_below_it():
+    """A group with no strong frame yields nothing, which is what drops the count."""
+    weak = [measured_frame(1, 30, phash="a" * 16, captured_at=1_000.0),
+            measured_frame(2, 32, phash="a" * 16, captured_at=1_000.4)]
+    strong = [measured_frame(3, 380, phash="b" * 16),
+              measured_frame(4, 400, phash="c" * 16)]
+    photos = weak + strong
+
+    strict = plan(photos, CullingSettings(preset="wedding", selection_strictness=85))
+    assert {pid for pid, s in strict.scores.items() if s.reason is None} == {4}
+    assert {pid for pid, s in strict.scores.items() if s.reason == "target"} == {1, 2, 3}
+    # The weak pair is a group, and with nothing left to choose from it keeps
+    # no one -- which is the mechanism that lowers the shoot's keeper count.
+    assert strict.selections[1].keeper_ids == []
+
+    # With no floor the same shoot keeps the weak group's sharper frame too.
+    loose = plan(photos, CullingSettings(preset="wedding", selection_strictness=15))
+    assert loose.selections[1].keeper_ids == [2]
+    assert {pid for pid, s in loose.scores.items() if s.reason is None} == {1, 2, 3, 4}
+
+
+def test_a_library_without_a_stop_scores_exactly_as_before(store, photo_dir):
+    """The floor is opt-in: the preset alone must not change any verdict."""
+    library_id, _ = scan(store, photo_dir, CullingSettings(preset="wedding"))
+    baseline = {r["id"]: (r["verdict"], r["reason"])
+                for r in store.photos(library_id)}
+    again = scan(store, photo_dir, CullingSettings(preset="wedding"))[0]
+    assert {r["id"]: (r["verdict"], r["reason"])
+            for r in store.photos(again)} == baseline
+    assert not any(reason == "target" for _v, reason in baseline.values())
 
 
 def test_target_cut_rank_handles_missing_tiebreak_signals():

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import pytest
+
 from culler.config import (
-    RATING_CATEGORIES, CullingSettings, strictness_stops,
+    RATING_CATEGORIES, CullingSettings, stop_keep_fraction, strictness_stops,
 )
 from culler.metrics.faces import Face, FaceMetrics
 from culler.metrics.technical import TechnicalMetrics
-from culler.scoring import composite, exposure_axis, score_photo, technical_reason
+from culler.pipeline import apply_selection_floor
+from culler.scoring import (
+    PhotoScore, composite, exposure_axis, score_photo, technical_reason,
+)
 
 
 def tech(sharp=120.0, clip_hi=0.0, clip_lo=0.02, mean=0.5, noise=4.0,
@@ -197,14 +202,18 @@ def test_selection_strictness_moves_every_gate():
     assert strict.gates().face_blur > lenient.gates().face_blur
 
 
-def test_selection_stops_keep_a_monotone_number_of_frames():
-    """A fixed set of measured frames, cut at each named stop.
+def test_selection_stops_scale_the_gates():
+    """The stop's gate half: a fixed set of frames, cut at each named stop.
 
     Six frames whose only difference is blown-highlight mass, so the exposure
     gate decides. The clip gate runs lerp(0.12, 0.03, t): at EXTREME (85) it
     admits clip_hi up to 0.0435, at FEW (60) 0.066, at STANDARD (35) 0.0885 and
     at MORE (15) 0.1065. The six values below therefore survive in 2 / 3 / 4 / 5
     frames respectively -- arithmetic on the gate formula, not a guess.
+
+    This is only the coarse half of a stop: on a real shoot the gates move the
+    keeper count by a couple of points, which is why each stop also carries a
+    keep fraction (see the floor tests below and `apply_selection_floor`).
     """
     # A bright frame (mean 0.8) so the highlight gate -- which only applies
     # above 0.55 mean luminance -- is the one deciding.
@@ -226,6 +235,80 @@ def test_the_named_stops_are_ordered_and_named_as_the_dialog_shows_them():
     values = [stop["value"] for stop in strictness_stops()]
     assert labels == ["EXTREME", "FEW", "STANDARD", "MORE"]
     assert values == sorted(values, reverse=True)
+
+
+def test_each_named_stop_carries_a_monotone_keep_fraction():
+    """The half of the stop that actually sets the keeper count.
+
+    Measured on a real 5,745-frame wedding (wedding preset) these fractions keep
+    288 frames (5.0%) at EXTREME, 532 (9.3%) at FEW, 847 (14.7%) at STANDARD and
+    1,233 (21.5%) -- everything that passed the gates -- at MORE. STANDARD lands
+    on the 14% (804 frames) the photographer kept by hand on that shoot.
+
+    A hand-set strictness (the CLI takes any 0..100) is not a stop and gets no
+    floor: no named value, no fraction.
+    """
+    fractions = [stop_keep_fraction(stop["value"]) for stop in strictness_stops()]
+    assert fractions == [0.25, 0.45, 0.70, None]
+    named = [f for f in fractions if f is not None]
+    assert named == sorted(named), named
+    assert fractions[-1] is None, "MORE is everything that passes the gates"
+    assert stop_keep_fraction(50) is None
+    assert stop_keep_fraction(None) is None
+
+
+def test_the_floor_keeps_the_strongest_share_of_the_gate_passers():
+    """100 measured frames, one per percent of composite quality."""
+    scores = {i: PhotoScore(quality=i / 100.0, verdict="keep")
+              for i in range(100)}
+    settings = CullingSettings(preset="wedding", selection_strictness=85)
+    threshold = apply_selection_floor(scores, settings)
+    kept = [s for s in scores.values() if s.reason is None]
+    assert len(kept) == 25, len(kept)
+    assert threshold == pytest.approx(0.75)
+    assert min(s.quality for s in kept) >= threshold
+    # Every frame the floor drops says "target" -- the reason the cull-to-target
+    # cap already uses -- so no new rejection reason enters the data model.
+    dropped = [s for s in scores.values() if s.reason is not None]
+    assert len(dropped) == 75
+    assert {s.reason for s in dropped} == {"target"}
+    assert all(s.verdict == "reject" for s in dropped)
+
+    standard = {i: PhotoScore(quality=i / 100.0, verdict="keep") for i in range(100)}
+    apply_selection_floor(standard, CullingSettings(preset="wedding",
+                                                    selection_strictness=35))
+    assert sum(1 for s in standard.values() if s.reason is None) == 70
+
+    # MORE adds no floor at all.
+    more = {i: PhotoScore(quality=i / 100.0, verdict="keep") for i in range(100)}
+    assert apply_selection_floor(more, CullingSettings(preset="wedding",
+                                                       selection_strictness=15)) is None
+    assert all(s.reason is None for s in more.values())
+
+
+def test_the_floor_only_counts_frames_that_passed_the_gates():
+    """A frame rejected as blurry is not a gate-passer and cannot be ranked in."""
+    scores = {0: PhotoScore(quality=0.9, verdict="reject", reason="blurry")}
+    scores.update({i + 1: PhotoScore(quality=i / 10.0, verdict="keep")
+                   for i in range(10)})
+    apply_selection_floor(scores, CullingSettings(preset="wedding",
+                                                  selection_strictness=85))
+    assert scores[0].reason == "blurry", "the blameless frame keeps its own reason"
+    assert sum(1 for s in scores.values() if s.reason is None) == 2
+
+
+def test_the_floor_stands_down_for_the_preset_and_for_cull_to_target():
+    # No stop selected: a library that never opened the dialog, unchanged.
+    untouched = {i: PhotoScore(quality=i / 100.0, verdict="keep") for i in range(100)}
+    assert apply_selection_floor(untouched, CullingSettings(preset="wedding")) is None
+    assert all(s.reason is None for s in untouched.values())
+
+    # Cull to Target is already a count control; the stop must not compound it.
+    capped = {i: PhotoScore(quality=i / 100.0, verdict="keep") for i in range(100)}
+    targeting = CullingSettings(preset="wedding", selection_strictness=85,
+                                target_ratio=0.2)
+    assert apply_selection_floor(capped, targeting) is None
+    assert all(s.reason is None for s in capped.values())
 
 
 def test_subject_sharpness_ranks_a_sharp_subject_over_a_soft_one():
