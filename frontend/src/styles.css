@@ -2918,3 +2918,58 @@ kbd {
     width: 76px;
   }
 }
+
+/* ---- in-app update ---------------------------------------------------- */
+
+/* The import row keeps Import first, the privacy note beside it, and the
+   manual update entry as the quiet last item. */
+.import__update {
+  margin-left: auto;
+  border-color: transparent;
+  color: var(--paper-dim);
+}
+
+.update {
+  gap: 12px;
+}
+
+.update__version {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--paper-dim);
+  word-break: break-all;
+}
+
+.update__version b {
+  color: var(--paper);
+  font-weight: 600;
+}
+
+.update__state {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.update__state--ok {
+  color: var(--brass);
+}
+
+.update__state--bad {
+  color: var(--grease);
+}
+
+/* A slimmer bar than the topbar's, reusing its fill. */
+.update__bar {
+  height: 3px;
+  background: var(--rule-soft);
+}
+
+.update__actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.update__notes {
+  text-decoration: none;
+}

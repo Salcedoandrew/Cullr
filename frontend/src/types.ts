@@ -220,7 +220,43 @@ export interface StrictnessStop {
   value: number;
 }
 
+/** One state of the in-app update flow, as the server reports it. */
+export type UpdatePhase =
+  | "idle"
+  | "up_to_date"
+  | "available"
+  | "downloading"
+  | "ready"
+  | "cancelled"
+  | "installing"
+  | "error";
+
+/**
+ * The manual update flow: nothing here happens until the user asks for it.
+ * `percent` is null while the server sends no Content-Length, which is why the
+ * panel falls back to the byte counts.
+ */
+export interface UpdateStatus {
+  current: string;
+  phase: UpdatePhase;
+  error: string | null;
+  latest: string | null;
+  notes_url: string | null;
+  filename: string | null;
+  download_url: string | null;
+  size: number;
+  done: number;
+  total: number;
+  percent: number | null;
+  checked_at: number | null;
+  /** The `.app` an update would replace; null when it could not be found. */
+  installed_at: string | null;
+  update_log: string;
+}
+
 export interface Capabilities {
+  /** The running build's version, e.g. "0.8.0". */
+  version: string;
   faces: boolean;
   faces_error: string | null;
   /** Scene runtime installed and model downloaded: the toggle is usable. */

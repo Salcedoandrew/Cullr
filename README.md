@@ -226,6 +226,25 @@ port that closes with the window.
   ~/Pictures/shoot --preset wedding --strictness 40`, `culler export
   ~/Pictures/shoot --mode sidecar|copy|csv`, `culler serve`, `culler fetch-model`,
   `culler fetch-scene-model`.
+
+### Updates
+
+* **Check for updates, when you ask** — one button in the app (import screen and
+  review footer). It reads a small manifest published with the latest release,
+  compares versions, and shows the new version, its size and a link to the
+  release notes *before* anything is downloaded. Nothing is checked on launch,
+  nothing is downloaded in the background, and the only host the app will talk
+  to is GitHub's release storage, over HTTPS.
+* **Verified before it replaces anything** — the console shows live progress in
+  percent and megabytes, and a download can be cancelled while it runs. The
+  `.dmg` is hashed against the release's `SHA256SUMS` and rejected if it does not
+  match. Only then does Cullr quit, replace the installed app in place (the new
+  `.app` is copied and checked first) and reopen itself on the new version,
+  leaving the catalog, settings and photos untouched.
+* **What that check does and does not prove** — the SHA-256 proves the download
+  is the file the release published. It is not a signature: it cannot prove the
+  release itself was not tampered with. Builds are ad-hoc signed, so an update
+  still lands in the same Gatekeeper path as a manual download.
 <!-- features:end -->
 
 ## 🚀 Quick start
@@ -374,10 +393,12 @@ have already curated.
 
 ## ✅ Verified behaviour
 
-`cd backend && ../.venv/bin/python -m pytest` — **113 tests**, covering the
+`cd backend && ../.venv/bin/python -m pytest` — **251 tests**, covering the
 metrics, gates, grouping, selection, identity clustering, coverage and the
-confirmable-merge rules, export formats, the HTTP API, and full
-scan-then-review-then-export runs on generated shoots.
+confirmable-merge rules, export formats, the HTTP API, full
+scan-then-review-then-export runs on generated shoots, and the update flow —
+including a real one, which packs a throwaway `.dmg` and checks that the
+installer replaces the installed bundle and relaunches it.
 
 Beyond the unit tests, the pipeline was exercised on real photographs:
 
@@ -414,12 +435,14 @@ backend/culler/
   pipeline.py      scan orchestration (thread pool, resumable, cancellable)
   db.py            SQLite catalog
   api.py           FastAPI service
+  update.py        manual update: manifest check, verified download, installer
   export.py        XMP sidecars, copies, CSV
   cli.py           scan / serve / export / fetch-model
 frontend/src/      React review UI (contact sheet, loupe, filters, export)
 desktop/           native entry point (WKWebView window), PyInstaller spec,
                    icon generator, .app + .dmg build script
-scripts/           release notes, rendered from this README's feature section
+scripts/           release notes (rendered from this README's feature section)
+                   and the update manifest published with each release
 .github/           tag-driven macOS release workflow
 docs/RESEARCH.md   Aftershoot analysis, repo analysis, licensing, architecture
 NOTICE.md          attribution and model licences
@@ -434,7 +457,9 @@ and deferred — see [`docs/RESEARCH.md`](https://github.com/Salcedoandrew/cullr
 §4.6), naming people, per-person albums, learned per-photographer ranking, and
 Lightroom catalogue round-trip are deliberately out of scope for the MVP. The
 desktop bundle is Apple silicon only (MediaPipe ships no universal2 wheel) and
-unsigned, so there is no notarised download or auto-update yet.
+unsigned, so there is no notarised download. Updates are manual — *Check for
+updates* downloads and verifies a whole new `.dmg`; there is no automatic or
+background check, and no delta updates.
 <!-- limits:end -->
 
 ## 📄 Licence notes

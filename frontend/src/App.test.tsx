@@ -40,6 +40,11 @@ const api = vi.hoisted(() => ({
   export: vi.fn(),
   semanticStatus: vi.fn(),
   downloadSceneModel: vi.fn(),
+  updateStatus: vi.fn(),
+  checkForUpdate: vi.fn(),
+  downloadUpdate: vi.fn(),
+  cancelUpdate: vi.fn(),
+  installUpdate: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -88,6 +93,7 @@ const settings: Settings = {
 };
 
 const capabilities: Capabilities = {
+  version: "0.8.0",
   faces: true,
   faces_error: null,
   semantic: false,
@@ -213,6 +219,24 @@ beforeEach(() => {
   // becomes the next test's default.
   window.localStorage.clear();
   api.capabilities.mockResolvedValue(capabilities);
+  // The update panel's own states are covered in UpdatePanel.test.tsx; here it
+  // only has to open.
+  api.updateStatus.mockResolvedValue({
+    current: "0.8.0",
+    phase: "idle",
+    error: null,
+    latest: null,
+    notes_url: null,
+    filename: null,
+    download_url: null,
+    size: 0,
+    done: 0,
+    total: 0,
+    percent: null,
+    checked_at: null,
+    installed_at: "/Applications/Cullr.app",
+    update_log: "/tmp/update.log",
+  });
   api.libraries.mockResolvedValue([]);
   // A library with no scan yet: the photo list reports total 0.
   api.photos.mockResolvedValue({ photos: [], total: 0, stats: statsOf(0) });
@@ -957,5 +981,24 @@ describe("a frame the scan could not read", () => {
     // A readable frame still just says where it lives.
     const good = screen.getByRole("button", { name: /IMG_0002\.jpg/ });
     expect(good.getAttribute("title")).toBe(fine.path);
+  });
+});
+
+describe("the in-app update entry", () => {
+  it("checks nothing until the user asks, then opens the manual panel", async () => {
+    await renderApp();
+
+    // No auto-check: the app has not touched the update endpoints on its own.
+    expect(api.checkForUpdate).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: /Check for updates/ }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Check for updates" });
+    expect(within(dialog).getByText(/0\.8\.0/)).toBeTruthy();
+    expect(api.checkForUpdate).not.toHaveBeenCalled();
+
+    // The check is the button in the panel, and nothing else.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Check for updates" }));
+    await waitFor(() => expect(api.checkForUpdate).toHaveBeenCalledTimes(1));
   });
 });

@@ -8,6 +8,7 @@ import { People } from "./components/People";
 import { Sheet } from "./components/Sheet";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
+import { UpdatePanel } from "./components/UpdatePanel";
 import type {
   Capabilities, ExportMemory, FilterKey, ImportOptions, Job, Library, MergeSuggestion,
   Person, Photo, Settings, Stats,
@@ -76,6 +77,7 @@ export default function App() {
   const [loupeId, setLoupeId] = useState<number | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [cullOpen, setCullOpen] = useState(false);
   const [discoveredTotal, setDiscoveredTotal] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -424,16 +426,26 @@ export default function App() {
     return <div className="boot">Starting Cullr…</div>;
   }
 
+  // The manual update flow is reachable from both screens — the import screen
+  // before a shoot is open and the review screen after — so it is built once.
+  const updatePanel = updateOpen && (
+    <UpdatePanel current={capabilities.version} onClose={() => setUpdateOpen(false)} />
+  );
+
   if (!library) {
     return (
-      <Import
-        libraries={libraries}
-        capabilities={capabilities}
-        error={error}
-        lastParent={libraries[0] ? parentOf(libraries[0].root_path) : undefined}
-        onOpen={openFolder}
-        onSelect={(chosen) => void openRecent(chosen)}
-      />
+      <>
+        <Import
+          libraries={libraries}
+          capabilities={capabilities}
+          error={error}
+          lastParent={libraries[0] ? parentOf(libraries[0].root_path) : undefined}
+          onOpen={openFolder}
+          onSelect={(chosen) => void openRecent(chosen)}
+          onCheckUpdates={() => setUpdateOpen(true)}
+        />
+        {updatePanel}
+      </>
     );
   }
 
@@ -525,6 +537,9 @@ export default function App() {
         <span><kbd>x</kbd> reject</span>
         <span><kbd>1</kbd>–<kbd>5</kbd> stars</span>
         <span><kbd>g</kbd> next group</span>
+        <button type="button" onClick={() => setUpdateOpen(true)}>
+          Cullr {capabilities.version} · Check for updates
+        </button>
         <button
           type="button"
           onClick={() => {
@@ -535,6 +550,8 @@ export default function App() {
           Change folder
         </button>
       </footer>
+
+      {updatePanel}
 
       {loupePhoto && (
         <Loupe

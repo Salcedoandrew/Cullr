@@ -1,6 +1,6 @@
 import type {
   Capabilities, FilterKey, FolderListing, ImportOptions, Job, Library, MergeSuggestion,
-  Person, Photo, PhotoResponse, SemanticStatus, Settings, Stats,
+  Person, Photo, PhotoResponse, SemanticStatus, Settings, Stats, UpdateStatus,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -23,6 +23,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   capabilities: () => request<Capabilities>("/api/capabilities"),
+
+  /**
+   * In-app update. The check is manual and happens on the server, which is the
+   * only side allowed to reach GitHub and the filesystem; the panel polls
+   * `/api/update` while a download runs.
+   */
+  updateStatus: () => request<UpdateStatus>("/api/update"),
+  checkForUpdate: () => request<UpdateStatus>("/api/update/check", { method: "POST" }),
+  downloadUpdate: () => request<UpdateStatus>("/api/update/download", { method: "POST" }),
+  cancelUpdate: () => request<UpdateStatus>("/api/update/cancel", { method: "POST" }),
+  installUpdate: () => request<UpdateStatus>("/api/update/install", { method: "POST" }),
 
   /** Scene model state; polled by the cull dialog while a download runs. */
   semanticStatus: () => request<SemanticStatus>("/api/semantic"),
@@ -155,6 +166,13 @@ export function formatTime(epoch: number | null): string {
     minute: "2-digit",
     second: "2-digit",
   });
+}
+
+/** "168.9 MB" — what a download progress line reads in. */
+export function formatBytes(bytes: number): string {
+  if (!bytes) return "0 MB";
+  const mb = bytes / (1024 * 1024);
+  return mb >= 1000 ? `${(mb / 1024).toFixed(2)} GB` : `${mb.toFixed(1)} MB`;
 }
 
 export function formatShutter(shutter: number | null): string {

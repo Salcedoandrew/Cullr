@@ -22,6 +22,8 @@ interface Props {
   lastParent?: string;
   onOpen: (path: string, options: ImportOptions) => Promise<void>;
   onSelect: (library: Library) => void;
+  /** Opens the manual update panel; there is no auto-check anywhere. */
+  onCheckUpdates: () => void;
 }
 
 const ALL_TYPES = ["raw", "jpeg", "tiff", "heic"];
@@ -60,7 +62,9 @@ function droppedNames(event: React.DragEvent): string[] {
   return [...new Set(names)];
 }
 
-export function Import({ libraries, capabilities, error, lastParent, onOpen, onSelect }: Props) {
+export function Import({
+  libraries, capabilities, error, lastParent, onOpen, onSelect, onCheckUpdates,
+}: Props) {
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState<"shoot" | "backup" | null>(null);
@@ -356,6 +360,14 @@ export function Import({ libraries, capabilities, error, lastParent, onOpen, onS
               Analysis runs on this machine. Nothing is uploaded, and originals are
               never modified.
             </p>
+            <button
+              type="button"
+              className="button import__update"
+              onClick={onCheckUpdates}
+              disabled={busy}
+            >
+              Cullr {capabilities.version} · Check for updates
+            </button>
           </div>
           {error && <p className="import__error">{error}</p>}
           {capabilities && !capabilities.faces && (
