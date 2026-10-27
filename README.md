@@ -91,6 +91,11 @@ port that closes with the window.
   across the whole shoot (a re-import with a different timestamp), and groups are
   chunked at 24 frames or a bounded time span so single-linkage cannot chain a
   whole ceremony into one group.
+* **Optional scene model** — a DINOv2-small scene vector per photo can confirm
+  loose hash matches, so a shot where a hand or expression moved still groups.
+  Off by default: it needs the `semantic` extra and a one-time ~42 MB download
+  (`culler fetch-scene-model`), and adds about 40 ms per photo. Without it,
+  grouping is exactly the hash-only behaviour above.
 * **Best of group** — quality with *bounded* tie-breaks for open eyes, face
   sharpness and expression, so a blink fixes a near-tie but never rescues a bad
   frame. Every group keeps at least one frame.
@@ -169,11 +174,13 @@ port that closes with the window.
   are read, and rotation is applied before scoring.
 * **Speed** — roughly 4–8 photos/second on an M-series laptop, CPU only (8
   threads), so a 1,000-frame shoot analyses in a few minutes.
-* **Privacy** — no uploads, no account and no telemetry; after the one-time model
-  download the app makes no network calls.
+* **Privacy** — no uploads, no account and no telemetry; model weights are
+  downloaded only when you run `fetch-model` or `fetch-scene-model` yourself, and
+  after that the app makes no network calls.
 * **Headless** — the same engine from a terminal: `culler scan
   ~/Pictures/shoot --preset wedding --strictness 40`, `culler export
-  ~/Pictures/shoot --mode sidecar|copy|csv`, `culler serve`, `culler fetch-model`.
+  ~/Pictures/shoot --mode sidecar|copy|csv`, `culler serve`, `culler fetch-model`,
+  `culler fetch-scene-model`.
 <!-- features:end -->
 
 ## 🚀 Quick start
@@ -188,6 +195,11 @@ uv pip install --python .venv/bin/python -e "backend[faces]"   # face/blink dete
 
 # 2. Face model (Apache-2.0, ~3.7 MB, checksum-pinned)
 .venv/bin/python -m culler.cli fetch-model
+
+# Optional: semantic duplicate confirmation (DINOv2-small, Apache-2.0, ~42 MB).
+# Off by default; enable it per library with `culler scan --semantic`.
+uv pip install --python .venv/bin/python -e "backend[semantic]"
+.venv/bin/python -m culler.cli fetch-scene-model
 
 # 3. Interface
 cd frontend && npm install && npm run build && cd ..

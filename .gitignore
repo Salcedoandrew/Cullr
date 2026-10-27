@@ -11,8 +11,10 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 
-# Local model bundle (download with `python -m culler.cli fetch-model`)
+# Local model bundle (download with `python -m culler.cli fetch-model`,
+# `fetch-scene-model` for the optional DINOv2 duplicate model)
 models/*.task
+models/*.onnx
 
 # Research clones and downloaded test fixtures (third-party, not redistributed)
 .research/

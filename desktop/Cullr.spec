@@ -45,6 +45,17 @@ try:  # MediaPipe has no PyInstaller hook; ship its dylib and data explicitly.
 except Exception as exc:  # pragma: no cover - only breaks a packaging run
     raise SystemExit(f"mediapipe could not be collected for packaging: {exc}")
 
+try:  # Optional: semantic duplicate confirmation (the `semantic` extra).
+    # The scene weights are a user download, but the runtime has to be inside
+    # the bundle or an installed copy could never use them. Absent from a dev
+    # environment, the build simply ships without it and the gate stays
+    # hash-only, which is the default anyway.
+    datas += collect_data_files("onnxruntime")
+    binaries += collect_dynamic_libs("onnxruntime")
+    hiddenimports += collect_submodules("onnxruntime")
+except Exception as exc:  # pragma: no cover - optional by design
+    print(f"semantic dedup not bundled: onnxruntime not collectable ({exc})")
+
 analysis = Analysis(  # noqa: F821
     [str(ROOT / "desktop" / "cullr_desktop.py")],
     pathex=[str(ROOT / "backend")],

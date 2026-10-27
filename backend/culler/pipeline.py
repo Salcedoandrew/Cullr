@@ -29,6 +29,10 @@ from .imaging import (
 )
 from .metrics.faces import Face, FaceAnalyzer, FaceMetrics
 from .metrics.faceid import embedding_from_bytes
+from .metrics.scene import (
+    SceneEmbedder, embedding_bytes as scene_bytes,
+    embedding_from_bytes as scene_from_bytes,
+)
 from .metrics.technical import TechnicalMetrics
 from .persons import (
     FaceObservation, PersonCluster, apply_merge_groups, cluster_faces,
@@ -53,6 +57,9 @@ class AnalysedPhoto:
     dhash: str | None = None
     error: str | None = None
     content_key: str = ""
+    # Per-photo scene vector for semantic duplicate confirmation. None when the
+    # library does not ask for it or the optional model is unavailable.
+    scene_embedding: tuple[float, ...] | None = None
 
     def analysis_payload(self) -> dict:
         tech = self.tech
@@ -90,6 +97,8 @@ class AnalysedPhoto:
             "face_ratio": faces.area_ratio,
             "phash": self.phash,
             "dhash": self.dhash,
+            # Stored as a fp16 BLOB (768 bytes), never sent to the API.
+            "scene_embedding": scene_bytes(self.scene_embedding),
             "error": self.error,
             # Descriptors travel as arrays into the catalog, never to the API.
             "faces": [
@@ -100,24 +109,43 @@ class AnalysedPhoto:
 
 
 def analyse_file(path: Path, analyzer: FaceAnalyzer,
-                 long_edge: int = ANALYSIS_LONG_EDGE) -> tuple[ImageMeta, TechnicalMetrics | None,
-                                                               FaceMetrics, str | None,
-                                                               str | None, str | None]:
+                 long_edge: int = ANALYSIS_LONG_EDGE,
+                 embedder: SceneEmbedder | None = None) -> tuple[
+                     ImageMeta, TechnicalMetrics | None, FaceMetrics, str | None,
+                     str | None, str | None, tuple[float, ...] | None]:
     """Decode and measure one file. Never raises."""
     from .metrics.technical import analyse as analyse_technical
 
     bgr, meta, error = load_image(path, long_edge)
     if bgr is None:
-        return meta, None, FaceMetrics(faces=[], available=analyzer.available), error, None, None
+        return (meta, None, FaceMetrics(faces=[], available=analyzer.available),
+                error, None, None, None)
 
     tech = analyse_technical(bgr)
     faces = analyzer.analyze(bgr)
+    # Only computed when the caller opted in: the embedder is None unless the
+    # library's settings enabled semantic duplicate confirmation.
+    scene = embedder.embed(bgr) if embedder is not None else None
     from .imaging import gray_of
 
     gray = gray_of(bgr)
     p_hash = hashes_to_hex(phash(gray))
     d_hash = hashes_to_hex(dhash(gray))
-    return meta, tech, faces, None, p_hash, d_hash
+    return meta, tech, faces, None, p_hash, d_hash, scene
+
+
+def _scene_vectors(photos: list[AnalysedPhoto],
+                   settings: CullingSettings) -> dict[int, tuple[float, ...]] | None:
+    """Scene vectors for the duplicate gate, or None when the library opted out.
+
+    This is the only place stored embeddings reach grouping, so with
+    ``semantic_dedup`` off the vectors in the catalog are ignored entirely and
+    `find_groups` behaves exactly as it did before they existed.
+    """
+    if not settings.semantic_dedup:
+        return None
+    vectors = {p.photo_id: p.scene_embedding for p in photos if p.scene_embedding}
+    return vectors or None
 
 
 @dataclass
@@ -168,7 +196,7 @@ def plan(photos: list[AnalysedPhoto], settings: CullingSettings) -> PlanResult:
         )
         for p in photos
     ]
-    groups: list[Group] = find_groups(items, settings)
+    groups: list[Group] = find_groups(items, settings, _scene_vectors(photos, settings))
     by_id = {p.photo_id: p for p in photos}
 
     scores: dict[int, PhotoScore] = {}
@@ -444,20 +472,30 @@ def run_scan(
 
     # ---- 2. analyse pending files ----------------------------------------- #
     analyzer = FaceAnalyzer()
+    # Semantic confirmation is opt-in per library. Loading the session here (on
+    # the main thread, before the pool) means the workers share one already-built
+    # session; a missing runtime or model just leaves the gate hash-only.
+    embedder: SceneEmbedder | None = None
+    if settings.semantic_dedup and pending:
+        candidate = SceneEmbedder()
+        embedder = candidate if candidate.available else None
     total_pending = len(pending)
+    note = "" if analyzer.available else " (faces unavailable)"
+    if settings.semantic_dedup and pending and embedder is None:
+        note += " (scene model missing: hash-only grouping)"
     progress("analyzing", 0, total_pending,
-             f"Analysing {total_pending} photos" + ("" if analyzer.available
-                                                    else " (faces unavailable)"))
+             f"Analysing {total_pending} photos{note}")
     done = 0
     lock = threading.Lock()
 
     def analyse_one(item: tuple[Path, int, str]) -> AnalysedPhoto:
         path, photo_id, key = item
-        meta, tech, faces, error, p_hash, d_hash = analyse_file(path, analyzer)
+        meta, tech, faces, error, p_hash, d_hash, scene = analyse_file(
+            path, analyzer, embedder=embedder)
         return AnalysedPhoto(
             photo_id=photo_id, path=str(path), filename=path.name, meta=meta,
             tech=tech, faces=faces, phash=p_hash, dhash=d_hash, error=error,
-            content_key=key,
+            content_key=key, scene_embedding=scene,
         )
 
     def handle(future, item) -> None:
@@ -645,4 +683,5 @@ def _from_row(row: dict, faces: list[dict]) -> AnalysedPhoto:
         meta=meta, tech=tech, faces=FaceMetrics(faces=face_objs, available=True),
         phash=row.get("phash"), dhash=row.get("dhash"), error=row.get("error"),
         content_key=row.get("content_key") or "",
+        scene_embedding=scene_from_bytes(row.get("scene_embedding")),
     )

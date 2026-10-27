@@ -11,8 +11,13 @@ catches:
 
 Candidates are confirmed by an embedding cosine gate when an embedder is
 available (facet's two-stage design: loose Hamming recall, cosine precision).
-Without an embedder the Hamming gate stands alone, so the feature works with
-zero model downloads.
+Stage 1 admits a pair up to ``LOOSE_PREFILTER_DISTANCE`` bits apart and stage 2
+requires a cosine at or above ``settings.embedding_threshold``; with an embedder
+the candidate loop also stops truncating at the similar-time window, because a
+loose hash match the photographer would call the same shot can be minutes
+apart. Without an embedder the Hamming gate stands alone and every rule is
+exactly what it was before embeddings existed, so the feature works with zero
+model downloads.
 
 Complexity is O(n·K) rather than O(n²): photos are ordered by capture time and
 only compared against the next K within the similarity time window, plus an
@@ -28,6 +33,16 @@ from .config import CullingSettings
 from .imaging import hamming, hex_to_hash
 
 MAX_NEIGHBOURS = 60
+# facet `utils/duplicate.py` stage 1: the loose Hamming prefilter, confirmed by
+# stage 2 (the scene-embedding cosine). Only consulted when embeddings exist.
+#
+# Measured on the 72-frame Teasers shoot with DINOv2-small vectors: no pair
+# inside 12 bits is one the hash rules miss, so this arm changed nothing there.
+# The pairs a photographer would call duplicates sat 16-30 bits apart (9 pairs
+# within 30 bits at cosine >= 0.88, 6 of those >= 0.90). Widening this constant
+# therefore widens recall -- it is a grouping change, not a free tune, so it
+# stays at facet's 12 until the labelled set says what the extra merges are.
+LOOSE_PREFILTER_DISTANCE = 12
 
 
 @dataclass
@@ -115,16 +130,24 @@ def find_groups(
     cos_threshold = (settings.embedding_threshold
                      if embedding_threshold is None else embedding_threshold)
 
-    def embedding_ok(a: int, b: int) -> bool:
+    has_embeddings = bool(embeddings)
+
+    def cosine_of(a: int, b: int) -> float | None:
+        """Cosine between two photos' vectors; None when either is missing."""
         if not embeddings:
-            return True
+            return None
         va, vb = embeddings.get(ordered[a].photo_id), embeddings.get(ordered[b].photo_id)
         if va is None or vb is None:
-            return True  # no evidence against: keep the hash decision
+            return None
         try:
-            sim = float(sum(x * y for x, y in zip(va, vb)))
+            return float(sum(x * y for x, y in zip(va, vb)))
         except TypeError:
-            return True
+            return None
+
+    def embedding_ok(a: int, b: int) -> bool:
+        sim = cosine_of(a, b)
+        if sim is None:
+            return True  # no evidence against: keep the hash decision
         return sim >= cos_threshold
 
     # 1. Near-duplicates anywhere in the shoot, independent of capture time.
@@ -152,7 +175,10 @@ def find_groups(
             dt: float | None = None
             if item.captured_at is not None and other.captured_at is not None:
                 dt = abs(other.captured_at - item.captured_at)
-                if dt > settings.similar_window_seconds:
+                # Without embeddings the window is what bounds this loop. With
+                # them, a loose hash match is worth a cosine whatever its
+                # distance in time; MAX_NEIGHBOURS still bounds the work.
+                if dt > settings.similar_window_seconds and not has_embeddings:
                     break  # ordered by time: everything further is further away
             else:
                 # Untimed files: compare against the next few in path order only.
@@ -175,10 +201,20 @@ def find_groups(
             same_scene = (dt is not None and dt <= settings.similar_window_seconds
                           and dist_ph <= settings.similar_distance + 6)
 
-            if not (near_dup or similar or same_scene or is_burst):
+            # Stage 1, loose arm: with an embedder, a hash pair the strict
+            # rules reject is still a candidate -- stage 2 decides it below.
+            loose_only = (has_embeddings and dist_ph <= LOOSE_PREFILTER_DISTANCE
+                          and not (near_dup or similar or same_scene or is_burst))
+            if not (near_dup or similar or same_scene or is_burst or loose_only):
                 continue
             if not embedding_ok(i, j):
                 continue
+            if loose_only:
+                # An edge the hash rules would not stand up alone needs a real
+                # confirmation: no vector means no edge, not "keep the hash".
+                sim = cosine_of(i, j)
+                if sim is None or sim < cos_threshold:
+                    continue
             edges.append(_Edge(i, j, strong=near_dup or is_burst, dt=dt))
             if dist_ph <= settings.duplicate_distance or is_burst:
                 # A burst or near-duplicate: keep scanning a little further for

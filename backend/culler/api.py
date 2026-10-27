@@ -28,6 +28,7 @@ from .config import (
 from .db import Store, default_data_dir, serialize_photo
 from .imaging import iter_images, render_jpeg
 from .metrics.faces import FaceAnalyzer
+from .metrics.scene import semantic_available
 from .persons import clusters_from_rows, propose_merges
 from .pipeline import run_scan
 
@@ -358,6 +359,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return {
             "faces": runner.faces.available,
             "faces_error": runner.faces.load_error,
+            # Optional: the DINOv2 scene model is a download, not a bundled
+            # asset, so the UI can offer it only when it is actually usable.
+            "semantic": semantic_available(),
             "presets": [
                 {"key": p.key, "label": p.label, "description": p.description,
                  "strictness": p.strictness}

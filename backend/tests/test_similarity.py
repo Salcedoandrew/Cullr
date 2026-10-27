@@ -78,6 +78,76 @@ def test_similar_window_requires_hash_agreement():
     assert find_groups(items, CullingSettings(similar_window_seconds=8.0)) == []
 
 
+def spread_hash(base: int, count: int) -> int:
+    """Flip ``count`` bits across *both* 32-bit halves of a hash.
+
+    Deliberately defeats cullr's top/bottom-half blocking, which is how the
+    anywhere-in-the-shoot pass finds candidates: a pair like this is invisible
+    to that pass and only reachable through a looser comparison.
+    """
+    top = [40, 44, 48, 52, 56, 60]
+    bottom = [4, 8, 12, 16, 20, 24]
+    other = base
+    for k in range(count):
+        other ^= 1 << (top[k // 2] if k % 2 == 0 else bottom[k // 2])
+    return other
+
+
+def test_two_stage_gate_finds_a_loose_match_the_time_window_hides():
+    """facet's stage 1 + 2: Hamming 10 spread over both halves, 30 s apart.
+
+    Today's gate needs a shared 32-bit hash bucket or the 8 s similar window, so
+    this pair is missed. The loose prefilter (<= 12) plus a confirming cosine
+    admits it -- the recall the two-stage design exists for.
+    """
+    import cv2
+
+    from culler.imaging import hamming
+
+    base_hash = phash(cv2.cvtColor(make_scene(6), cv2.COLOR_BGR2GRAY))
+    other_hash = spread_hash(base_hash, 10)
+    assert hamming(base_hash, other_hash) == 10
+
+    items = [
+        SimilarityItem(1, 0.0, hashes_to_hex(base_hash), None, 1),
+        SimilarityItem(2, 30.0, hashes_to_hex(other_hash), None, 2),
+    ]
+    settings = CullingSettings()          # burst 2 s, similar window 8 s
+    assert find_groups(items, settings) == []
+
+    embeddings = {1: [1.0, 0.0], 2: [0.99, 0.01]}   # cosine 0.99
+    groups = find_groups(items, settings, embeddings=embeddings)
+    assert len(groups) == 1
+    assert sorted(groups[0].member_ids) == [1, 2]
+
+
+def test_two_stage_gate_refuses_a_loose_match_the_embedding_denies():
+    import cv2
+
+    base_hash = phash(cv2.cvtColor(make_scene(6), cv2.COLOR_BGR2GRAY))
+    items = [
+        SimilarityItem(1, 0.0, hashes_to_hex(base_hash), None, 1),
+        SimilarityItem(2, 30.0, hashes_to_hex(spread_hash(base_hash, 10)), None, 2),
+    ]
+    denied = {1: [1.0, 0.0], 2: [0.2, 0.98]}        # cosine 0.20
+    assert find_groups(items, CullingSettings(), embeddings=denied) == []
+
+
+def test_two_stage_gate_needs_a_vector_to_widen_recall():
+    """No embedder, no widening: the loose pair stays missed, as today."""
+    import cv2
+
+    base_hash = phash(cv2.cvtColor(make_scene(6), cv2.COLOR_BGR2GRAY))
+    items = [
+        SimilarityItem(1, 0.0, hashes_to_hex(base_hash), None, 1),
+        SimilarityItem(2, 30.0, hashes_to_hex(spread_hash(base_hash, 10)), None, 2),
+    ]
+    assert find_groups(items, CullingSettings()) == []
+    # A half-populated embedding map must not open the gate either.
+    only_one = {1: [1.0, 0.0]}
+    assert find_groups(items, CullingSettings(), embeddings=only_one) == []
+
+
 def test_embedding_gate_can_block_a_hash_match():
     base = make_scene(1)
     items = [item(1, 0.0, base), item(2, 0.2, base)]

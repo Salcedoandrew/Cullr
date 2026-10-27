@@ -19,6 +19,8 @@ informed this implementation and are credited here.
 | --- | --- | --- |
 | MediaPipe Face Landmarker bundle (`face_landmarker.task`) | Apache-2.0 (Google) | Downloaded from Google's model storage, pinned by SHA-256 `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`. Provides 478 landmarks, `eyeBlink*`/`mouthSmile*` blendshapes and head pose. |
 | Face identity descriptor (`backend/culler/metrics/faceid.py`) | Original code | Built from the landmarker's own mesh: five-point alignment plus a DCT/gradient-histogram descriptor. No extra model, weights or training data are involved. |
+| DINOv2 ViT-S/14 scene model (`dinov2_vits14_fp16.onnx`, 42 MB) | Apache-2.0 (Meta AI) — code and weights | **Optional, not bundled.** Downloaded only by `cull fetch-scene-model`, pinned by SHA-256 `16845e153bbaf3fd1ef8a2154c454940f901f6fe8a80dd4c6c319eaecdb4d2ee`. The ONNX fp16 conversion is `onnx-community/dinov2-small` on Hugging Face; measured 0.9999 cosine against the fp32 graph on the same frames. DINOv2's training data is not fully documented, which is why it is opt-in and off by default. |
+| onnxruntime (optional `semantic` extra) | MIT | CPU inference for the scene model. Not shipped unless the extra is installed at build time. |
 | OpenCV | Apache-2.0 | Decoding, Laplacian/Sobel metrics, perceptual hashing primitives. |
 | Pillow, pillow-heif | HPND / BSD-3 | Decoding, EXIF, HEIC support. |
 | rawpy / LibRaw (optional) | MIT / LGPL-2.1 (LibRaw: CDDL-1.0 or LGPL-2.1) | Optional RAW decode. Not required for JPEG/HEIC workflows; review LibRaw's terms before redistributing binaries. |
@@ -33,8 +35,9 @@ informed this implementation and are credited here.
   gate for exactly this reason. Cullr uses MediaPipe instead.
 * **SAMP-Net, U2-Net-P, LAION aesthetic head** — licence unclear per facet's own
   registry.
-* **CLIP / DINOv2** — permissive code (MIT / Apache-2.0) but unverified training
-  data. Not enabled in v1; the embedder interface exists for a later opt-in.
+* **CLIP** — MIT code, but its training-data licence is unverified and it offers
+  no measured advantage for duplicate detection. DINOv2-small is the opt-in
+  scene embedder instead (see above), and one embedder is enough.
 * **OpenCV Zoo SFace** (`face_recognition_sface_2021dec.onnx`, Apache-2.0) —
   evaluated for identity clustering. It needs `opencv-contrib`'s
   `FaceRecognizerSF`; loaded through plain `cv2.dnn` it returned near-constant

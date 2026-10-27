@@ -547,14 +547,21 @@ for a worker split later.
 
 * RAW decoding via `rawpy` (optional install; JPEG previews of RAWs work if the
   camera wrote an embedded JPEG — otherwise install `rawpy`).
-* Semantic embeddings (DINOv2/CLIP) — interface exists, disabled by default.
+* Semantic duplicate confirmation (DINOv2-small ONNX) — implemented and
+  **opt-in**: the `semantic` extra plus a 42 MB checksum-pinned download, a
+  per-library flag, 768 stored bytes per photo and about 40 ms per photo
+  (measured: 81 → 117 ms/photo on the 72-frame Teasers shoot). Measured on that
+  shoot, it added no merges at facet's 12-bit prefilter — the pairs that looked
+  like duplicates sat 16–30 bits apart — so it stays off by default until a
+  labelled set justifies widening the prefilter. CLIP is not used.
 * Learned (as opposed to classical) face embeddings; see §4.6 for why the
   permissive options were deferred.
 * Naming people, per-person export albums, "bride & groom priority" weights.
 * Learned per-photographer ranking, editing/tethering/Lightroom catalogue
   round-trip.
 
-**Roadmap after v1**: DINOv2 semantic dedup → optional SFace embeddings
+**Roadmap after v1**: labelled duplicate evaluation (and the wider prefilter it
+would justify) for the opt-in DINOv2 dedup → optional SFace embeddings
 (`opencv-contrib`) behind the same clustering interface → named people and
 per-person export → learned keeper ranker on user decisions → Lightroom
 catalogue integration (retoucan's `catalog.rs` approach) → Tauri packaging.

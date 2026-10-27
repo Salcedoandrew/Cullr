@@ -509,7 +509,7 @@ def test_scan_promotes_a_keeper_for_a_second_person(store, tmp_path, monkeypatch
         "IMG_5003.jpg": [vector_at(person_b, 0.96, seed=2)],
     }
 
-    def fake_analyse(path, analyzer, long_edge=None):
+    def fake_analyse(path, analyzer, long_edge=None, embedder=None):
         faces = [Face(x=100, y=80, w=220, h=220, eyes_open=9.0, smile=5.0,
                       yaw=2.0, pitch=1.0, sharpness=420.0, area_ratio=0.06,
                       clip_hi=0.0, clip_lo=0.0, mean_luma=0.5, embedding=vector)
@@ -517,7 +517,7 @@ def test_scan_promotes_a_keeper_for_a_second_person(store, tmp_path, monkeypatch
         meta = ImageMeta(width=1600, height=1067,
                          captured_at=1_750_000_000.0 + names.index(path.name))
         return (meta, technical(), FaceMetrics(faces=faces), None,
-                "1234567890abcdef", "1234567890abcdef")
+                "1234567890abcdef", "1234567890abcdef", None)  # scene embedding
 
     monkeypatch.setattr(pipeline, "analyse_file", fake_analyse)
 
@@ -561,13 +561,14 @@ def test_confirmed_merge_survives_a_rescan(store, tmp_path, monkeypatch):
         "IMG_7001.jpg": [vector_at(base, 0.87, seed=72)],
     }
 
-    def fake_analyse(path, analyzer, long_edge=None):
+    def fake_analyse(path, analyzer, long_edge=None, embedder=None):
         faces = [Face(x=100, y=80, w=220, h=220, eyes_open=9.0, area_ratio=0.06,
                       sharpness=420.0, embedding=v) for v in vectors[path.name]]
         return (ImageMeta(width=1600, height=1067,
                           captured_at=1_760_000_000.0 + list(vectors).index(path.name)),
                 technical(), FaceMetrics(faces=faces), None,
-                f"{list(vectors).index(path.name):016x}", f"{list(vectors).index(path.name):016x}")
+                f"{list(vectors).index(path.name):016x}",
+                f"{list(vectors).index(path.name):016x}", None)
 
     monkeypatch.setattr(pipeline, "analyse_file", fake_analyse)
     library = store.create_or_get_library(str(shoot))
@@ -595,12 +596,12 @@ def test_people_can_be_disabled(store, tmp_path, monkeypatch):
         save_jpeg(shoot / f"IMG_600{index}.jpg", textured_image(160, seed=41),
                   f"2024:06:01 10:00:0{index}")
 
-    def fake_analyse(path, analyzer, long_edge=None):
+    def fake_analyse(path, analyzer, long_edge=None, embedder=None):
         faces = [Face(x=100, y=80, w=220, h=220, eyes_open=9.0, area_ratio=0.06,
                       sharpness=420.0, embedding=unit_vector(41))]
         return (ImageMeta(width=1600, height=1067, captured_at=1_750_000_000.0),
                 technical(), FaceMetrics(faces=faces), None,
-                "ffff0000ffff0000", "ffff0000ffff0000")
+                "ffff0000ffff0000", "ffff0000ffff0000", None)
 
     monkeypatch.setattr(pipeline, "analyse_file", fake_analyse)
     library = store.create_or_get_library(str(shoot))

@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS photos (
     eyes_open REAL, worst_eyes_open REAL, blink INTEGER DEFAULT 0,
     smile REAL, face_sharpness REAL, frontal REAL, face_ratio REAL,
     phash TEXT, dhash TEXT,
+    scene_embedding BLOB,
     quality REAL,
     verdict TEXT DEFAULT 'keep',
     reason TEXT,
@@ -172,7 +173,8 @@ class Store:
         for column, kind in (("subject_sharpness", "REAL"), ("bg_separation", "REAL"),
                              ("bimodality", "REAL"), ("shadow_clipped", "INTEGER"),
                              ("highlight_clipped", "INTEGER"),
-                             ("color_harmony", "REAL")):
+                             ("color_harmony", "REAL"),
+                             ("scene_embedding", "BLOB")):
             if column not in photos:
                 conn.execute(f"ALTER TABLE photos ADD COLUMN {column} {kind}")
         people = {row["name"] for row in conn.execute("PRAGMA table_info(persons)")}
@@ -348,7 +350,7 @@ class Store:
             "bg_separation", "bimodality", "shadow_clipped",
             "highlight_clipped", "color_harmony", "face_count", "eyes_open",
             "worst_eyes_open", "blink", "smile", "face_sharpness", "frontal",
-            "face_ratio", "phash", "dhash", "error",
+            "face_ratio", "phash", "dhash", "scene_embedding", "error",
         ]
         payload = {k: data.get(k) for k in cols}
         payload["analysis_version"] = version
@@ -381,7 +383,8 @@ class Store:
                 "subject_sharpness, bg_separation, bimodality, shadow_clipped, "
                 "highlight_clipped, color_harmony, "
                 "face_count, eyes_open, worst_eyes_open, smile, face_sharpness, "
-                "frontal, face_ratio, error, analysis_version, content_key "
+                "frontal, face_ratio, scene_embedding, error, analysis_version, "
+                "content_key "
                 "FROM photos WHERE library_id = ? ORDER BY path", (library_id,)
             ).fetchall()
         return [dict(r) for r in rows]

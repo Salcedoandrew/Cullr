@@ -43,9 +43,10 @@ THUMB_LONG_EDGE = 512
 # clustering) are part of analysis. 3: the metrics the new ranking axes read
 # back from the stored row — subject-region sharpness, background separation,
 # histogram bimodality, the shadow/highlight masses and the colour-histogram
-# entropy. A row analysed before they existed would score differently from a
-# fresh analysis, so version 2 rows are re-analysed once. Bumped as one step
-# because all of it ships together; there are no version-3 rows in the wild.
+# entropy — plus the optional per-photo scene embedding. A row analysed before
+# they existed would score differently from a fresh analysis, so version 2 rows
+# are re-analysed once. Bumped as one step because all of it ships together;
+# there are no version-3 rows in the wild.
 ANALYSIS_VERSION = 3
 
 IMAGE_EXTENSIONS = {
@@ -200,8 +201,17 @@ class CullingSettings:
     burst_window_seconds: float = 2.0      # EXIF capture-time window
     similar_window_seconds: float = 8.0    # same-scene window
     min_group_size: int = 2
-    # Embedding confirmation (only when an embedder is installed).
-    embedding_threshold: float = 0.90
+    # Semantic duplicate confirmation: one DINOv2-small scene vector per photo,
+    # stored with the analysis and used by `similarity.find_groups` to confirm
+    # loose hash matches. Off by default, because it needs the optional
+    # `semantic` extra plus a one-time model download; see
+    # `metrics/scene.py`. With it off, grouping is hash-only and unchanged.
+    semantic_dedup: bool = False
+    # Cosine floor for that confirmation. Measured on this Mac: a genuine
+    # near-duplicate pair (the same frame exported twice) scored 0.908, the
+    # nearest unrelated pair in the sample 0.63. photo-pipeline's 0.92 would
+    # have missed the real pair, hence 0.88 rather than a copied constant.
+    embedding_threshold: float = 0.88
     # Relative blur gate: reject when a frame is this fraction of its group median.
     relative_blur_ratio: float | None = None
     # People: cluster faces across the shoot and guarantee every subject appears

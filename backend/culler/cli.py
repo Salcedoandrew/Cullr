@@ -1,4 +1,4 @@
-"""Command line entry point: scan, serve, export, fetch-model."""
+"""Command line entry point: scan, serve, export, fetch-model, fetch-scene-model."""
 
 from __future__ import annotations
 
@@ -13,11 +13,20 @@ from pathlib import Path
 from .config import PRESETS, CullingSettings, resource_path
 from .db import Store, default_data_dir
 from .metrics.faces import MODEL_FILENAME, MODEL_URL
+from .metrics.scene import (
+    MODEL_FILENAME as SCENE_MODEL_FILENAME,
+    MODEL_URL as SCENE_MODEL_URL,
+    default_model_path as scene_model_path,
+)
 from .pipeline import run_scan
 
 # Pinned: the same SHA-256 facet verifies for its MediaPipe bundle.
 MODEL_SHA256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 MODEL_DIR = resource_path("models")
+# Pinned: the exact fp16 DINOv2-small graph the duplicate threshold was
+# calibrated against. Convicted by hash, not by filename, so a changed upstream
+# export cannot silently alter grouping.
+SCENE_MODEL_SHA256 = "16845e153bbaf3fd1ef8a2154c454940f901f6fe8a80dd4c6c319eaecdb4d2ee"
 
 
 def _store(args) -> Store:
@@ -49,6 +58,32 @@ def cmd_fetch_model(args) -> int:
     return 0
 
 
+def cmd_fetch_scene_model(args) -> int:
+    """Download the optional scene model used for semantic dedup."""
+    target = scene_model_path()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    if target.exists():
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        if digest == SCENE_MODEL_SHA256:
+            print(f"scene model already present: {target}")
+            return 0
+        print("existing scene model failed verification, re-downloading")
+        target.unlink()
+    print(f"downloading {SCENE_MODEL_URL}")
+    tmp = target.with_suffix(".download")
+    with urllib.request.urlopen(SCENE_MODEL_URL, timeout=300) as response, \
+            tmp.open("wb") as fh:
+        shutil.copyfileobj(response, fh)
+    digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
+    if digest != SCENE_MODEL_SHA256:
+        tmp.unlink(missing_ok=True)
+        print(f"checksum mismatch: {digest}", file=sys.stderr)
+        return 1
+    tmp.rename(target)
+    print(f"saved {target}")
+    return 0
+
+
 def _settings_from_args(args) -> CullingSettings:
     settings = CullingSettings(preset=args.preset)
     if args.strictness is not None:
@@ -59,6 +94,8 @@ def _settings_from_args(args) -> CullingSettings:
         settings.group_duplicates = False
     if args.keep_per_group is not None:
         settings.keep_min_per_group = args.keep_per_group
+    if getattr(args, "semantic", False):
+        settings.semantic_dedup = True
     return settings
 
 
@@ -151,6 +188,9 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--no-blinks", action="store_true")
     scan.add_argument("--no-grouping", action="store_true")
     scan.add_argument("--force", action="store_true", help="re-analyse unchanged files")
+    scan.add_argument("--semantic", action="store_true",
+                      help="confirm loose duplicate matches with DINOv2 scene "
+                           "embeddings (needs fetch-scene-model)")
     scan.add_argument("--json", action="store_true")
     scan.set_defaults(func=cmd_scan)
 
@@ -169,6 +209,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     fetch = sub.add_parser("fetch-model", help="download the MediaPipe face model")
     fetch.set_defaults(func=cmd_fetch_model)
+
+    fetch_scene = sub.add_parser(
+        "fetch-scene-model",
+        help="download the DINOv2 scene model (semantic duplicate detection)",
+    )
+    fetch_scene.set_defaults(func=cmd_fetch_scene_model)
     return parser
 
 
