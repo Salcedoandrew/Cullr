@@ -79,8 +79,18 @@ export default function App() {
   const [cullOpen, setCullOpen] = useState(false);
   const [discoveredTotal, setDiscoveredTotal] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Which finished job's read-failure banner has been dismissed. The banner
+  // itself is derived from the job below, so it survives a photo-list refresh
+  // and a page reload; only an explicit dismissal (or a new scan) changes it.
+  const [dismissedJob, setDismissedJob] = useState<number | null>(null);
 
   const busy = job?.status === "running";
+  /** A finished scan that could not read files: the one case where "0 keepers"
+   *  is not an answer. Derived from the job row (re-read with the library), not
+   *  from state the refresh would drop. */
+  const unreadable = job && job.status !== "running" && (job.error_count ?? 0) > 0
+    ? job
+    : null;
   const selected = useMemo(
     () => photos.find((photo) => photo.id === selectedId) ?? null,
     [photos, selectedId],
@@ -433,6 +443,26 @@ export default function App() {
       <div className="app__body">
         <Sidebar filter={filter} stats={stats} onChange={setFilter} />
         <main className="app__main">
+          {unreadable && unreadable.id !== dismissedJob && (
+            <div className="sheet-note sheet-note--warning" role="status">
+              <span>
+                {(unreadable.error_count ?? 0) >= (unreadable.total || 0)
+                  ? `None of the ${unreadable.total} frames could be read.`
+                  : `${unreadable.error_count} of ${unreadable.total} frames could not be read.`}
+                {unreadable.error_sample ? <code>{unreadable.error_sample}</code> : null}
+              </span>
+              <button type="button" className="button" onClick={() => setFilter("errors")}>
+                View unreadable files
+              </button>
+              <button
+                type="button"
+                className="button"
+                onClick={() => setDismissedJob(unreadable.id)}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
           {listed === 0 && !busy && !job && (
             <p className="sheet-note">
               No cull yet.{" "}

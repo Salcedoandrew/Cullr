@@ -353,7 +353,24 @@ class ScanResult:
     ingest_reused: int = 0  # files already there, left alone
     cancelled: bool = False
     elapsed: float = 0.0
+    # One line per file the scan could not read ("<filename>: <Type>: <msg>"),
+    # capped at 25: the count is ``failed``, this is the evidence.
     errors: list[str] = field(default_factory=list)
+
+
+def read_failure_sample(errors: list[str]) -> str | None:
+    """The cause behind a read failure, from the scan's sampled error lines.
+
+    ``ScanResult.errors`` holds up to 25 ``"<filename>: <Type>: <message>"``
+    lines, so this keeps the exception and its message and drops the filename:
+    the grid already names the files, and what the user needs to see is the
+    reason. Files usually fail the same way, so the first one is representative.
+    """
+    for line in errors:
+        _filename, separator, reason = line.partition(": ")
+        if separator and reason:
+            return reason
+    return None
 
 
 def ingest_copy(source: Path, dest: Path, *, recursive: bool, extensions: set[str],

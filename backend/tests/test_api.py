@@ -85,6 +85,57 @@ def test_scan_then_review_then_decide_then_export(client, photo_dir, tmp_path):
     assert sidecars["written"] == 6
 
 
+def test_a_scan_that_cannot_read_anything_fails_instead_of_keeping_zero(client, tmp_path):
+    """"0 keepers · 0 groups" is a verdict on the shoot. Nothing was read, so
+    nothing was judged, and the job has to say that instead."""
+    root = tmp_path / "unreadable"
+    root.mkdir()
+    (root / "IMG_0001.jpg").write_bytes(b"not a jpeg at all")
+    (root / "IMG_0002.jpg").write_bytes(b"nor is this one")
+    library = client.post("/api/libraries", json={"path": str(root)}).json()
+
+    client.post(f"/api/libraries/{library['id']}/scan", json={})
+    job = wait_for_scan(client, library["id"])
+
+    assert job["status"] == "error"
+    assert job["error_count"] == 2
+    assert job["error_sample"] and job["error_sample"].startswith("UnidentifiedImageError")
+    assert "none of the 2 files could be read" in (job["error"] or "")
+    assert "could be evaluated" in job["message"]
+
+    stats = client.get(f"/api/libraries/{library['id']}/stats").json()
+    assert stats["errors"] == 2
+    unreadable = client.get(f"/api/libraries/{library['id']}/photos",
+                            params={"filter": "errors"}).json()
+    assert unreadable["total"] == 2
+
+
+def test_a_partly_unreadable_shoot_still_finishes_and_says_so(client, photo_dir):
+    (photo_dir / "IMG_9999.jpg").write_bytes(b"not a jpeg at all")
+    library = client.post("/api/libraries", json={"path": str(photo_dir)}).json()
+
+    client.post(f"/api/libraries/{library['id']}/scan", json={})
+    job = wait_for_scan(client, library["id"])
+
+    assert job["status"] == "done", "the rest of the shoot was culled"
+    assert job["error_count"] == 1
+    assert job["message"].endswith("1 could not be read"), job["message"]
+    assert job["error_sample"].startswith("UnidentifiedImageError")
+    # The scan itself did not fail, so the job's error field stays empty.
+    assert job["error"] is None
+
+
+def test_a_clean_scan_carries_no_read_failures(client, photo_dir):
+    library = client.post("/api/libraries", json={"path": str(photo_dir)}).json()
+    client.post(f"/api/libraries/{library['id']}/scan", json={})
+    job = wait_for_scan(client, library["id"])
+
+    assert job["status"] == "done"
+    assert job["error_count"] == 0
+    assert job["error_sample"] is None
+    assert job["message"].endswith("s"), "the old message format, unchanged"
+
+
 def test_second_scan_is_rejected_while_one_is_running(client, photo_dir, monkeypatch):
     """The runner refuses a concurrent scan of the same library."""
     library = client.post("/api/libraries", json={"path": str(photo_dir)}).json()

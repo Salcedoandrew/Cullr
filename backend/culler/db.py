@@ -38,6 +38,12 @@ CREATE TABLE IF NOT EXISTS jobs (
     total INTEGER NOT NULL DEFAULT 0,
     done INTEGER NOT NULL DEFAULT 0,
     error TEXT,
+    -- Files the scan could not read at all, and the reason from the first of
+    -- them. Distinct from `error`, which means the scan itself failed: a shoot
+    -- where two frames are unreadable is a finished cull that needs explaining,
+    -- not a crash.
+    error_count INTEGER NOT NULL DEFAULT 0,
+    error_sample TEXT,
     started_at TEXT,
     finished_at TEXT
 );
@@ -184,6 +190,11 @@ class Store:
         for column in ("export_mode", "export_dest"):
             if column not in libraries:
                 conn.execute(f"ALTER TABLE libraries ADD COLUMN {column} TEXT")
+        jobs = {row["name"] for row in conn.execute("PRAGMA table_info(jobs)")}
+        for column, kind in (("error_count", "INTEGER NOT NULL DEFAULT 0"),
+                             ("error_sample", "TEXT")):
+            if column not in jobs:
+                conn.execute(f"ALTER TABLE jobs ADD COLUMN {column} {kind}")
 
     @contextmanager
     def connect(self):
@@ -285,7 +296,7 @@ class Store:
         if not fields:
             return
         allowed = {"status", "stage", "message", "total", "done", "error",
-                   "started_at", "finished_at"}
+                   "error_count", "error_sample", "started_at", "finished_at"}
         cols = [k for k in fields if k in allowed]
         sets = ", ".join(f"{c} = ?" for c in cols)
         with self.connect() as conn:

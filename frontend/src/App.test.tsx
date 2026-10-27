@@ -3,7 +3,9 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import type { Capabilities, Library, PhotoResponse, Settings, Stats } from "./types";
+import type {
+  Capabilities, Job, Library, PhotoResponse, Settings, Stats,
+} from "./types";
 
 /**
  * The count the cull options show before any scan — "~20% of 72 photos", the
@@ -115,6 +117,19 @@ const statsOf = (total: number): Stats => ({
   groups: 0,
   persons: 0,
   uncovered_persons: 0,
+});
+
+const jobOf = (over: Partial<Job> = {}): Job => ({
+  id: 1,
+  status: "done",
+  stage: "done",
+  message: "4 keepers · 2 groups · 72 photos in 8.0s",
+  total: TOTAL,
+  done: TOTAL,
+  error: null,
+  error_count: 0,
+  error_sample: null,
+  ...over,
 });
 
 const library = (over: Partial<Library> = {}): Library => ({
@@ -482,5 +497,97 @@ describe("the semantic dedup toggle", () => {
     const start = await within(dialog).findByRole(
       "button", { name: "Downloading model…" }) as HTMLButtonElement;
     expect(start.disabled).toBe(true);
+  });
+});
+
+describe("a scan that could not read files", () => {
+  const banner = () => (screen.queryByRole("button", { name: "View unreadable files" })
+    ?.closest(".sheet-note") ?? null) as HTMLElement | null;
+
+  async function openWithJob(job: Job, stats: Partial<Stats>) {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.photos.mockResolvedValue({ photos: [], total: TOTAL,
+                                   stats: statsOf(TOTAL, stats) });
+    api.latestJob.mockResolvedValue(job);
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.latestJob).toHaveBeenCalledWith(1));
+  }
+
+  it("says so above the grid, with the reason, and points at the files", async () => {
+    await openWithJob(
+      jobOf({ status: "error", error_count: TOTAL, error_sample:
+        "UnidentifiedImageError: cannot identify image file 'SALR3900.CR3'" }),
+      { reject: TOTAL, errors: TOTAL },
+    );
+
+    await waitFor(() => expect(banner()).not.toBeNull());
+    const note = banner() as HTMLElement;
+    expect(note.textContent).toContain(`None of the ${TOTAL} frames could be read.`);
+    expect(note.textContent).toContain(
+      "UnidentifiedImageError: cannot identify image file");
+    expect(note.className).toContain("sheet-note--warning");
+
+    fireEvent.click(within(note).getByRole("button", { name: "View unreadable files" }));
+    await waitFor(() =>
+      expect(api.photos).toHaveBeenLastCalledWith(1, "errors", "group", null));
+
+    fireEvent.click(within(note).getByRole("button", { name: "Dismiss" }));
+    await waitFor(() => expect(banner()).toBeNull());
+  });
+
+  it("counts the failures when the rest of the shoot read fine", async () => {
+    await openWithJob(jobOf({ error_count: 3, message: "40 keepers · 12 groups · 72 photos in 9.1s · 3 could not be read",
+                              error_sample: "UnidentifiedImageError: cannot identify image file 'IMG_0007.CR3'" }),
+                      { reject: 32, errors: 3 });
+
+    await waitFor(() => expect(banner()).not.toBeNull());
+    expect((banner() as HTMLElement).textContent).toContain(
+      `3 of ${TOTAL} frames could not be read.`);
+  });
+
+  it("stays quiet on a shoot where every frame was read", async () => {
+    await openWithJob(jobOf(), { keep: TOTAL });
+
+    await waitFor(() => expect(api.latestJob).toHaveBeenCalledWith(1));
+    expect(banner()).toBeNull();
+  });
+});
+
+describe("the unreadable filter", () => {
+  const sidebar = () => screen.getByRole("navigation", { name: "Review filters" });
+
+  async function openScannedLibrary(stats: Partial<Stats>) {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.photos.mockResolvedValue({ photos: [], total: TOTAL,
+                                   stats: statsOf(TOTAL, stats) });
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+  }
+
+  it("offers a row for files the scan could not read, and lists exactly those", async () => {
+    await openScannedLibrary({ reject: TOTAL, errors: TOTAL });
+
+    const row = await within(sidebar()).findByRole(
+      "button", { name: /Unreadable/ }) as HTMLButtonElement;
+    // The row sits under Rejected: that is where a user looks for why frames
+    // were dropped, and "unreadable" is a different answer from "soft".
+    const labels = [...sidebar().querySelectorAll(".filter span:first-child")]
+      .map((span) => span.textContent);
+    expect(labels.indexOf("Unreadable")).toBe(labels.indexOf("Rejected") + 1);
+    expect(within(row).getByText(String(TOTAL))).toBeTruthy();
+
+    fireEvent.click(row);
+    await waitFor(() =>
+      expect(api.photos).toHaveBeenLastCalledWith(1, "errors", "group", null));
+  });
+
+  it("stays out of the way on a shoot where every frame was readable", async () => {
+    await openScannedLibrary({ keep: TOTAL });
+
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    expect(within(sidebar()).queryByRole("button", { name: /Unreadable/ })).toBeNull();
+    expect(within(sidebar()).getByRole("button", { name: /Rejected/ })).toBeTruthy();
   });
 });

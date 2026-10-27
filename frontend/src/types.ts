@@ -252,6 +252,11 @@ export interface Job {
   total: number;
   done: number;
   error: string | null;
+  /** Files the scan could not read at all; 0 on a shoot that read cleanly. */
+  error_count: number;
+  /** The first failure's own text ("UnidentifiedImageError: cannot identify
+   *  image file 'SALR3900.CR3'"), so the reason is not a mystery. */
+  error_sample: string | null;
 }
 
 export type FilterKey =

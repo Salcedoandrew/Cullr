@@ -2023,6 +2023,33 @@ kbd {
   color: var(--paper-dim);
 }
 
+/* A scan that could not read files. Grease rather than brass: this is the one
+   note on the review screen that reports a problem with the shoot (or with the
+   build) instead of describing it, so it should not read as another hint. */
+.sheet-note--warning {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  border-left-color: var(--grease);
+  background: var(--grease-soft);
+  color: var(--paper);
+}
+
+.sheet-note--warning code {
+  display: block;
+  margin-top: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+  overflow-wrap: anywhere;
+}
+
+.sheet-note--warning .button {
+  margin-left: auto;
+}
+
 .progress {
   flex-basis: 100%;
   display: flex;

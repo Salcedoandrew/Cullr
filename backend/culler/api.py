@@ -34,7 +34,7 @@ from .metrics.scene import (
     semantic_available,
 )
 from .persons import clusters_from_rows, propose_merges
-from .pipeline import run_scan
+from .pipeline import read_failure_sample, run_scan
 
 FRONTEND_DIST = resource_path("frontend", "dist")
 FACE_CROP_EDGE = 192
@@ -315,10 +315,29 @@ class JobRunner:
                             message += (f" · ingested {result.ingested} photos "
                                         f"({result.ingest_reused} already in the "
                                         f"working copy)")
-                        self.store.update_job(
-                            job["id"], status="done", stage="done", message=message,
-                            total=result.total, done=result.total,
-                        )
+                        unread = result.failed
+                        sample = read_failure_sample(result.errors)
+                        if unread:
+                            # Say it in the job's own line as well as in the
+                            # banner: "3016 photos in 12.3s" on its own reads as
+                            # a finished cull even when nothing was read.
+                            message += f" · {unread} could not be read"
+                        fields: dict = {
+                            "status": "done", "stage": "done", "message": message,
+                            "total": result.total, "done": result.total,
+                            "error_count": unread, "error_sample": sample,
+                        }
+                        if unread and unread >= result.total:
+                            # Not one frame was read, so nothing was evaluated and
+                            # nothing was decided. Calling that a finished cull --
+                            # "0 keepers · 0 groups" -- reads as a verdict on the
+                            # shoot when it is a failure of the app.
+                            fields["status"] = "error"
+                            fields["stage"] = "error"
+                            fields["message"] = f"0 of {result.total} frames could be evaluated"
+                            fields["error"] = (f"none of the {result.total} files could be read"
+                                               + (f" — {sample}" if sample else ""))
+                        self.store.update_job(job["id"], **fields)
                 except Exception as exc:  # noqa: BLE001
                     self.store.update_job(job["id"], status="error", stage="error",
                                           error=f"{type(exc).__name__}: {exc}",
