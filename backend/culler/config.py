@@ -51,6 +51,33 @@ RAW_EXTENSIONS = {
     ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".rw2", ".orf", ".pef", ".srw",
 }
 
+# Import screen: the four photo types the panel offers, in the order it shows
+# them (Aftershoot's import panel lists the same four). "jpeg" is the
+# everyday-raster group — JPEG plus the other lossless/raster formats that are
+# neither RAW, TIFF nor HEIC — so unchecking it removes PNG/WebP/BMP too.
+# The panel shows the extensions under each label, so the grouping is visible.
+IMPORT_TYPE_EXTENSIONS: dict[str, frozenset[str]] = {
+    "raw": frozenset(RAW_EXTENSIONS),
+    "jpeg": frozenset({".jpg", ".jpeg", ".png", ".webp", ".bmp"}),
+    "tiff": frozenset({".tif", ".tiff"}),
+    "heic": frozenset({".heic", ".heif", ".avif"}),
+}
+IMPORT_TYPE_KEYS = ("raw", "jpeg", "tiff", "heic")
+IMPORT_TYPE_LABELS = {
+    "raw": "RAW",
+    "jpeg": "JPEG",
+    "tiff": "TIFF",
+    "heic": "HEIC",
+}
+
+
+def extensions_for_types(types: Any) -> set[str]:
+    """The file suffixes a set of import-type keys admits (empty = none)."""
+    extensions: set[str] = set()
+    for key in types or ():
+        extensions |= set(IMPORT_TYPE_EXTENSIONS.get(str(key), frozenset()))
+    return extensions
+
 # Axes that can contribute to the composite score. Missing axes are dropped
 # from numerator AND denominator, so a landscape is never punished for having
 # no eyes (the pattern used by photo-pipeline's axis_composite_score).
@@ -183,6 +210,30 @@ class CullingSettings:
     target_ratio: float | None = None
     # Export: rewrite an existing <file>.xmp instead of leaving it alone.
     overwrite_xmp: bool = True
+    # Import (the import screen): which folders to walk and which files count.
+    # These travel with the library in settings_json, so a rescan reuses them.
+    recursive: bool = True               # include sub-folders
+    import_types: tuple[str, ...] = ("raw", "jpeg", "tiff", "heic")
+    # Ingest and backup: copy the imported photos into a working directory
+    # under the app data dir (and, when set, a backup directory), then scan
+    # the working copy. The source folder is remembered as the library root;
+    # originals are never modified.
+    ingest: bool = False
+    backup_dir: str | None = None
+
+    def __post_init__(self) -> None:
+        # settings_json round-trips through JSON, so a tuple arrives as a list.
+        # Unknown keys are dropped rather than failing a stored library.
+        cleaned: list[str] = []
+        for key in self.import_types or ():
+            key = str(key)
+            if key in IMPORT_TYPE_EXTENSIONS and key not in cleaned:
+                cleaned.append(key)
+        self.import_types = tuple(cleaned)
+
+    def import_extensions(self) -> set[str]:
+        """The file suffixes this library's import admits."""
+        return extensions_for_types(self.import_types)
     # Similarity floor for *suggesting* a merge between two people. Proposals are
     # only ever confirmed by the photographer, so this can sit below the automatic
     # match threshold (0.90) and still be safe.

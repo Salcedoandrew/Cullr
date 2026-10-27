@@ -63,11 +63,19 @@ def content_key(path: Path) -> str:
     return hashlib.sha1(f"{st.st_size}:{st.st_mtime_ns}".encode()).hexdigest()[:20]
 
 
-def iter_images(root: Path, recursive: bool = True) -> list[Path]:
+def iter_images(root: Path, recursive: bool = True,
+                extensions: set[str] | frozenset[str] | None = None) -> list[Path]:
+    """Image files under ``root`` (top level only when ``recursive`` is off).
+
+    ``extensions`` defaults to every supported image suffix; the import screen
+    narrows it to the photo types the photographer checked. Hidden files and
+    folders (dot-prefixed) are always skipped.
+    """
+    allowed = IMAGE_EXTENSIONS if extensions is None else {e.lower() for e in extensions}
     pattern = "**/*" if recursive else "*"
     out: list[Path] = []
     for p in sorted(root.glob(pattern)):
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS:
+        if p.is_file() and p.suffix.lower() in allowed:
             if not any(part.startswith(".") for part in p.relative_to(root).parts):
                 out.append(p)
     return out

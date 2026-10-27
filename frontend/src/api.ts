@@ -1,6 +1,6 @@
 import type {
-  Capabilities, FilterKey, FolderListing, Job, Library, MergeSuggestion, Person, Photo,
-  PhotoResponse, Settings, Stats,
+  Capabilities, FilterKey, FolderListing, ImportOptions, Job, Library, MergeSuggestion,
+  Person, Photo, PhotoResponse, Settings, Stats,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -25,10 +25,10 @@ export const api = {
   capabilities: () => request<Capabilities>("/api/capabilities"),
 
   libraries: () => request<Library[]>("/api/libraries"),
-  createLibrary: (path: string) =>
+  createLibrary: (path: string, settings?: ImportOptions) =>
     request<Library>("/api/libraries", {
       method: "POST",
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(settings === undefined ? { path } : { path, settings }),
     }),
   library: (id: number) => request<Library>(`/api/libraries/${id}`),
 

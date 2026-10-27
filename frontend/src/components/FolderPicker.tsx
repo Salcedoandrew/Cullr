@@ -17,6 +17,12 @@ interface Props {
   title: string;
   startPath?: string;
   actionLabel: string;
+  /** Name of a folder the user dropped on the import screen: shown as a hint,
+   *  and pre-selected when a folder with that name is in the listing. The
+   *  dropped folder itself can never be named by the browser — WebKit does
+   *  not expose absolute paths — so this is the name, and the pick is the
+   *  real path. */
+  droppedName?: string | null;
   onPick: (path: string) => void;
   onClose: () => void;
 }
@@ -177,7 +183,7 @@ function itemGlyph(entry: FolderEntry) {
 
 /* ------------------------------------------------------------- component -- */
 
-export function FolderPicker({ title, startPath, actionLabel, onPick, onClose }: Props) {
+export function FolderPicker({ title, startPath, actionLabel, droppedName, onPick, onClose }: Props) {
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(true);
@@ -277,6 +283,25 @@ export function FolderPicker({ title, startPath, actionLabel, onPick, onClose }:
     const needle = query.trim().toLowerCase();
     return needle ? all.filter((entry) => entry.name.toLowerCase().includes(needle)) : all;
   }, [listing, query]);
+
+  // A dropped folder is pre-selected when it is in this listing, so confirming
+  // the drop is one click. Once only per dropped name: the photographer's own
+  // selection after that is theirs.
+  const preselected = useRef<string | null>(null);
+  useEffect(() => {
+    if (!droppedName || preselected.current === droppedName || !listing) return;
+    const match =
+      entries.find((entry) => entry.kind === "folder" && entry.name === droppedName) ??
+      entries.find(
+        (entry) =>
+          entry.kind === "folder" &&
+          entry.name.toLowerCase() === droppedName.toLowerCase(),
+      );
+    if (match) {
+      preselected.current = droppedName;
+      setSelected(match.path);
+    }
+  }, [droppedName, listing, entries]);
 
   const selectedFolder = entries.find(
     (entry) => entry.path === selected && entry.kind === "folder",
@@ -480,6 +505,11 @@ export function FolderPicker({ title, startPath, actionLabel, onPick, onClose }:
 
         <div className="finder__head">
           <p className="finder__message">{title}</p>
+          {droppedName && (
+            <p className="finder__hint">
+              You dropped &ldquo;{droppedName}&rdquo; — pick it below to import.
+            </p>
+          )}
           <div className="finder__toolbar">
             <div className="finder__group">
               <button

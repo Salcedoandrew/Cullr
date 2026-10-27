@@ -22,8 +22,8 @@ from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
 from .config import (
-    ANALYSIS_LONG_EDGE, IMAGE_EXTENSIONS, PRESETS, THUMB_LONG_EDGE, CullingSettings,
-    resource_path,
+    ANALYSIS_LONG_EDGE, IMAGE_EXTENSIONS, IMPORT_TYPE_EXTENSIONS, IMPORT_TYPE_KEYS,
+    IMPORT_TYPE_LABELS, PRESETS, THUMB_LONG_EDGE, CullingSettings, resource_path,
 )
 from .db import Store, default_data_dir, serialize_photo
 from .imaging import render_jpeg
@@ -304,10 +304,14 @@ class JobRunner:
                         self.store.update_job(job["id"], status="cancelled",
                                               stage="cancelled", message="Cancelled")
                     else:
+                        message = (f"{result.keepers} keepers · {result.groups} groups · "
+                                   f"{result.total} photos in {result.elapsed:.1f}s")
+                        if result.ingested or result.ingest_reused:
+                            message += (f" · ingested {result.ingested} photos "
+                                        f"({result.ingest_reused} already in the "
+                                        f"working copy)")
                         self.store.update_job(
-                            job["id"], status="done", stage="done",
-                            message=(f"{result.keepers} keepers · {result.groups} groups · "
-                                     f"{result.total} photos in {result.elapsed:.1f}s"),
+                            job["id"], status="done", stage="done", message=message,
                             total=result.total, done=result.total,
                         )
                 except Exception as exc:  # noqa: BLE001
@@ -361,6 +365,13 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             ],
             "default_settings": CullingSettings().to_dict(),
             "analysis_long_edge": ANALYSIS_LONG_EDGE,
+            # The import screen's photo-type checkboxes, single-sourced from
+            # config.py so the panel can never offer a type the scan rejects.
+            "import_types": [
+                {"key": key, "label": IMPORT_TYPE_LABELS[key],
+                 "extensions": sorted(IMPORT_TYPE_EXTENSIONS[key])}
+                for key in IMPORT_TYPE_KEYS
+            ],
         }
 
     # ---- folders ------------------------------------------------------- #
@@ -453,7 +464,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     # ---- libraries ----------------------------------------------------- #
     @app.get("/api/libraries")
     def list_libraries() -> list[dict]:
-        return [_decorate_library(row) for row in store.list_libraries()]
+        return [_decorate_library(row, store) for row in store.list_libraries()]
 
     @app.post("/api/libraries")
     def create_library(body: LibraryRequest) -> dict:
@@ -463,7 +474,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         library = store.create_or_get_library(str(root), body.settings)
         if body.settings:
             library["settings"] = CullingSettings.from_dict(body.settings).to_dict()
-        return _decorate_library(library)
+        return _decorate_library(library, store)
 
 
     @app.get("/api/libraries/{library_id}")
@@ -471,7 +482,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         library = store.get_library(library_id)
         if not library:
             raise HTTPException(404, "library not found")
-        return _decorate_library(library)
+        return _decorate_library(library, store)
 
     @app.delete("/api/libraries/{library_id}")
     def delete_library(library_id: int) -> dict:
@@ -683,8 +694,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     return app
 
 
-def _decorate_library(library: dict) -> dict:
-    """Add the parsed settings and the remembered export to a library row."""
+def _decorate_library(library: dict, store: Store) -> dict:
+    """Add the parsed settings, the remembered export and, for an ingested
+    library, where its working copy lives to a library row."""
     library.setdefault(
         "settings",
         CullingSettings.from_dict(_json_or_none(library.get("settings_json"))).to_dict(),
@@ -692,6 +704,12 @@ def _decorate_library(library: dict) -> dict:
     mode = library.get("export_mode")
     library["export"] = (
         {"mode": mode, "dest": library.get("export_dest") or ""} if mode else None
+    )
+    settings = library["settings"]
+    library["ingest_root"] = (
+        str(store.ingest_root(library["id"]))
+        if isinstance(settings, dict) and settings.get("ingest")
+        else None
     )
     return library
 

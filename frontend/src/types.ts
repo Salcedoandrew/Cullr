@@ -137,6 +137,23 @@ export interface Library {
   photo_count?: number;
   settings?: Partial<Settings>;
   export?: ExportMemory | null;
+  /** Working copy, when the library was ingested; null otherwise. */
+  ingest_root?: string | null;
+}
+
+/** The import screen's options. They travel with the library, so a rescan
+ *  reuses them — including the working copy an ingest created. */
+export interface ImportOptions {
+  recursive: boolean;
+  import_types: string[];
+  ingest: boolean;
+  backup_dir: string | null;
+}
+
+export interface ImportType {
+  key: string;
+  label: string;
+  extensions: string[];
 }
 
 export interface Settings {
@@ -150,6 +167,12 @@ export interface Settings {
   target_ratio: number | null;
   /** Export: replace an existing <file>.xmp rather than leaving it alone. */
   overwrite_xmp: boolean;
+  /** Import: walk sub-folders, and which photo types count. */
+  recursive: boolean;
+  import_types: string[];
+  /** Import: copy into a working directory (and an optional backup) first. */
+  ingest: boolean;
+  backup_dir: string | null;
 }
 
 export interface Preset {
@@ -165,6 +188,7 @@ export interface Capabilities {
   presets: Preset[];
   default_settings: Settings;
   analysis_long_edge: number;
+  import_types: ImportType[];
 }
 
 export interface PhotoResponse {

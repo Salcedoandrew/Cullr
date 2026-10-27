@@ -223,6 +223,15 @@ class Store:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def ingest_root(self, library_id: int) -> Path:
+        """Where an ingested library's working copy lives.
+
+        Deterministic from the catalog location, so the library remembers its
+        working copy without another column: source folder is ``root_path``,
+        working copy is ``<data dir>/ingest/<library id>``. A rescan reuses it.
+        """
+        return Path(self.db_path).parent / "ingest" / str(library_id)
+
     def update_library_settings(self, library_id: int, settings: dict) -> None:
         with self.connect() as conn:
             conn.execute("UPDATE libraries SET settings_json = ? WHERE id = ?",

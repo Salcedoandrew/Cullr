@@ -50,6 +50,25 @@ port that closes with the window.
 ## ✨ What it does
 
 <!-- features:start -->
+### Import
+
+* **Drop zone** — click to choose a folder or drag one in from Finder, a card,
+  or an external drive. In the Mac app the drop resolves to the real folder
+  path; anywhere else it opens the same Finder-style picker, pre-navigated to
+  the last folder you used, with the dropped folder's name shown and selected.
+* **Import settings** — which photo types to bring in (RAW, JPEG, TIFF, HEIC),
+  whether to include sub-folders, and whether to ingest and back up first.
+* **Ingest and backup** — photos are copied into the app's working folder
+  before culling, with an optional second copy to a backup folder you choose,
+  so the card can be reformatted while you review. Originals are never
+  modified, and a rescan reuses the same working copy — even if the source
+  folder is gone.
+* **Finder-style folder picker** — places sidebar (recents, favourites, network
+  shares, volumes), an icon or list browser with real thumbnails, item counts
+  and image dimensions, a breadcrumb menu, search, and **New Folder**; styled
+  with the system's materials rather than the app's palette.
+* **Recent folders** — the shoots you have opened before, one click to reopen.
+
 ### The culling engine
 
 * **Sharpness / blur** — Laplacian variance on a normalised 1600 px frame,
@@ -128,8 +147,6 @@ port that closes with the window.
 * **Keyboard-first** — `J`/`K` or arrows to move, `Space` to loupe, `G` to the next
   group, `X` to reject, `P` or `Enter` to pick, `U` to clear, `1`–`5` to star,
   `Esc` to back out.
-* **Start screen** — the same Finder-style folder picker as export, plus the shoots
-  you have opened before.
 
 ### Export
 
@@ -176,7 +193,8 @@ cd frontend && npm install && npm run build && cd ..
 .venv/bin/python -m culler.cli serve --port 8000
 ```
 
-Open <http://127.0.0.1:8000>, paste a folder path, and press **Open folder**.
+Open <http://127.0.0.1:8000> and drop a shoot folder onto the import screen —
+or paste a path and press **Import**.
 
 Without the `[faces]` extra everything still works except closed-eye detection:
 the UI says so and the rest of the pipeline (blur, exposure, duplicates, groups)

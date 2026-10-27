@@ -147,6 +147,154 @@ kbd {
   margin-top: 14px;
 }
 
+/* Drop zone: the front door of the import screen. Dashed and quiet at rest,
+ * brass when a folder is over it. */
+.import__drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 560px;
+  padding: 30px 20px 26px;
+  margin-bottom: 26px;
+  border: 1.5px dashed var(--rule);
+  border-radius: 4px;
+  color: var(--paper-dim);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.import__drop:hover {
+  border-color: var(--paper-faint);
+}
+
+.import__drop.is-dragging {
+  border-color: var(--brass);
+  border-style: solid;
+  background: var(--brass-soft);
+  color: var(--paper);
+}
+
+.import__drop.is-resolving {
+  border-style: solid;
+  color: var(--paper-dim);
+  cursor: wait;
+}
+
+.import__drop-icon {
+  color: var(--paper-faint);
+}
+
+.import__drop.is-dragging .import__drop-icon {
+  color: var(--brass);
+}
+
+.import__drop-title {
+  font-family: var(--serif);
+  font-size: 17px;
+  color: var(--paper);
+}
+
+.import__drop-sub {
+  font-size: 12.5px;
+  color: var(--paper-faint);
+}
+
+/* Import settings: what to bring in, and whether to copy it first. */
+.import__settings {
+  max-width: 560px;
+  margin: 26px 0 0;
+  padding: 18px 0 4px;
+  border: 0;
+  border-top: 1px solid var(--rule-soft);
+}
+
+.import__settings legend {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--paper-faint);
+  padding: 0 8px 0 0;
+}
+
+.import__setting {
+  margin-bottom: 16px;
+}
+
+.import__setting-label {
+  display: block;
+  font-size: 12px;
+  color: var(--paper-faint);
+  margin-bottom: 8px;
+}
+
+.import__types {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 18px;
+}
+
+.import__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 5px 0;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.import__check input {
+  margin-top: 2px;
+  accent-color: var(--brass);
+}
+
+.import__check small {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--paper-faint);
+  margin-top: 1px;
+}
+
+.import__ingest {
+  margin: 2px 0 10px 26px;
+}
+
+.import__ingest p {
+  font-size: 12.5px;
+  color: var(--paper-faint);
+  max-width: 52ch;
+  margin: 0 0 10px;
+}
+
+.import__backup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.import__backup-path {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--paper-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import__actions {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  margin-top: 22px;
+}
+
+.import__actions .import__note {
+  margin: 0;
+}
+
 .import__recent {
   align-self: start;
   border-left: 1px solid var(--rule-soft);
@@ -1307,6 +1455,18 @@ kbd {
   font-size: 13px;
   font-weight: 600;
   color: #ececf0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A folder dropped on the import screen: its name, so the pick below is the
+ * one the drop meant. */
+.finder__hint {
+  margin: 4px 0 0;
+  padding: 0 14px;
+  font-size: 12px;
+  color: #9dc0d4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

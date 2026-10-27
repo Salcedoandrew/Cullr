@@ -20,6 +20,7 @@ window server).
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import socket
@@ -106,6 +107,71 @@ def _start_service(data_dir: Path, port: int):
     return server, thread
 
 
+def _attach_native_drop(window, base_url: str, log: logging.Logger) -> bool:
+    """Attach the Python-side drop listener; True when a dropped folder can
+    now resolve to a real path.
+
+    How it works (pywebview 5.0+, verified against its source): on macOS, when
+    something is dropped from Finder onto the window *and* a Python-side
+    ``drop`` listener is registered, the pasteboard's file URLs are recorded
+    as ``(basename, absolute path)`` pairs — a dropped folder is one such
+    pair. The JavaScript ``drop`` event is then forwarded to Python, and
+    ``culler.drop.resolve_dropped_path`` turns it into the folder to import.
+    JavaScript itself never sees an absolute path; the full path exists only
+    on Python's side, and it is handed back to the page with ``evaluate_js``
+    (``window.__cullrDrop``), never by uploading a file.
+
+    Anything that fails here — an older pywebview, the listener not attaching
+    — only loses the native drop. The import screen still works: a drop then
+    opens the folder picker pre-navigated to the last-used parent with the
+    dropped folder's name shown.
+    """
+    try:
+        from webview.dom import DOMEventHandler, _dnd_state
+    except ImportError as exc:
+        log.warning("native drag-and-drop is unavailable (%s); drops use the "
+                    "folder picker", exc)
+        return False
+    from culler.drop import resolve_dropped_path
+
+    def on_drop(event: dict) -> None:
+        # The bridge dispatches drop events on its own thread; evaluate_js is
+        # queue-based, so calling it here is the designed pattern.
+        try:
+            paths = list(_dnd_state.get("paths", []))
+            resolved, consumed = resolve_dropped_path(event, paths)
+            for pair in consumed:
+                try:
+                    _dnd_state["paths"].remove(pair)
+                except ValueError:
+                    pass
+            if resolved:
+                window.evaluate_js(
+                    "window.__cullrDrop && window.__cullrDrop("
+                    + json.dumps(resolved) + ")")
+            else:
+                window.evaluate_js(
+                    "window.__cullrDropError && window.__cullrDropError("
+                    + json.dumps("could not resolve the dropped folder") + ")")
+        except Exception as exc:  # noqa: BLE001 - a drop must never take the window down
+            log.exception("drop failed")
+            try:
+                window.evaluate_js(
+                    "window.__cullrDropError && window.__cullrDropError("
+                    + json.dumps(str(exc)) + ")")
+            except Exception:
+                pass
+
+    try:
+        window.dom.document.events.drop += DOMEventHandler(on_drop, prevent_default=True)
+        window.evaluate_js("window.__cullrNativeDrop = true")
+    except Exception:
+        log.exception("could not attach the drop listener")
+        return False
+    log.info("native drag-and-drop attached")
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog=APP_NAME)
     parser.add_argument("--server-only", action="store_true",
@@ -157,6 +223,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     assert window is not None
     state: dict[str, object] = {}
+
+    # Native drag-and-drop: attach the Python-side drop listener once the app
+    # itself is showing. The splash is a different document, so attaching
+    # earlier would listen on a page that is about to be replaced.
+    drop_attached = {"done": False}
+
+    def on_loaded() -> None:
+        if drop_attached["done"]:
+            return
+        try:
+            current = window.get_current_url() or ""
+        except Exception:
+            return
+        if not current.startswith(base_url):
+            return
+        if _attach_native_drop(window, base_url, log):
+            drop_attached["done"] = True
+
+    window.events.loaded += on_loaded
 
     def boot() -> None:
         try:

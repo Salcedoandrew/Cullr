@@ -14,6 +14,7 @@ without decoding a single image.
 from __future__ import annotations
 
 import os
+import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -267,9 +268,51 @@ class ScanResult:
     keepers: int = 0
     persons: int = 0
     uncovered: int = 0
+    ingested: int = 0       # files copied into the working copy / backup
+    ingest_reused: int = 0  # files already there, left alone
     cancelled: bool = False
     elapsed: float = 0.0
     errors: list[str] = field(default_factory=list)
+
+
+def ingest_copy(source: Path, dest: Path, *, recursive: bool, extensions: set[str],
+                progress: ProgressCb | None = None,
+                cancel_event: threading.Event | None = None) -> tuple[int, int]:
+    """Copy the import set from ``source`` into ``dest``, preserving layout.
+
+    Only files the import admits (the extension filter, the recursive flag)
+    are copied, and only when the destination is missing one or the source
+    changed (size or mtime) — a rescan reuses the working copy instead of
+    copying it again. ``copy2`` preserves mtime, which is what the content key
+    is built from, so a copied file is still recognised as unchanged. The
+    source is only ever read: originals are never modified.
+    """
+    from .imaging import iter_images
+
+    progress = progress or (lambda *_: None)
+    cancel_event = cancel_event or threading.Event()
+    files = iter_images(source, recursive=recursive, extensions=extensions)
+    copied = reused = 0
+    for index, path in enumerate(files, start=1):
+        if cancel_event.is_set():
+            break
+        target = dest / path.relative_to(source)
+        try:
+            stat = path.stat()
+            if (target.exists() and target.is_file()
+                    and target.stat().st_size == stat.st_size
+                    and int(target.stat().st_mtime) == int(stat.st_mtime)):
+                reused += 1
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(path, target)
+                copied += 1
+        except OSError as exc:
+            raise ValueError(f"cannot copy {path.name}: {exc}") from exc
+        if index % 100 == 0 or index == len(files):
+            progress("ingesting", index, len(files),
+                     f"Ingested {index}/{len(files)} photos")
+    return copied, reused
 
 
 def _worker_count() -> int:
@@ -322,9 +365,47 @@ def run_scan(
 
     root = Path(library["root_path"])
     result = ScanResult(library_id=library_id)
+
+    # ---- 0. ingest: work on a copy, never on the originals --------------- #
+    # Import options are sticky per library (they live in settings_json), so
+    # changing ingest mode on an existing library is not a supported flow —
+    # the working copy is the library once ingest is on.
+    effective_root = root
+    if settings.ingest:
+        working = store.ingest_root(library_id)
+        extensions = settings.import_extensions()
+        if root.is_dir():
+            copied, reused = ingest_copy(root, working, recursive=settings.recursive,
+                                         extensions=extensions, progress=progress,
+                                         cancel_event=cancel_event)
+            result.ingested += copied
+            result.ingest_reused += reused
+            if settings.backup_dir:
+                backup = Path(settings.backup_dir).expanduser()
+                if not backup.is_dir():
+                    raise ValueError(f"backup folder is not available: {backup}")
+                if backup.resolve() == root.resolve() or root.resolve() in backup.resolve().parents:
+                    raise ValueError("backup folder must not be inside the source folder")
+                copied, reused = ingest_copy(root, backup, recursive=settings.recursive,
+                                             extensions=extensions, progress=progress,
+                                             cancel_event=cancel_event)
+                result.ingested += copied
+                result.ingest_reused += reused
+            effective_root = working
+        elif working.is_dir() and any(working.iterdir()):
+            # The source is gone (a reformatted card) but the working copy is
+            # still here: scan that. A rescan reuses the same working copy.
+            progress("ingesting", 0, 0, "Source folder is gone — using the working copy")
+            effective_root = working
+        if cancel_event.is_set():
+            result.cancelled = True
+            result.elapsed = time.monotonic() - started
+            return result
+
     progress("discovering", 0, 0, "Finding images")
 
-    files = iter_images(root)
+    files = iter_images(effective_root, recursive=settings.recursive,
+                        extensions=settings.import_extensions())
     result.total = len(files)
     if not files:
         progress("done", 0, 0, "No images found")
@@ -505,9 +586,13 @@ def run_scan(
     result.keepers = keepers
     result.elapsed = time.monotonic() - started
     people = f" · {result.persons} people" if result.persons else ""
+    ingested = ""
+    if result.ingested or result.ingest_reused:
+        ingested = (f" · ingested {result.ingested} photos "
+                    f"({result.ingest_reused} already in the working copy)")
     progress("done", len(photos), len(photos),
              f"{keepers} keepers · {len(group_rows)} groups{people} · "
-             f"{result.elapsed:.1f}s")
+             f"{result.elapsed:.1f}s{ingested}")
     return result
 
 

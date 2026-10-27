@@ -9,8 +9,8 @@ import { Sheet } from "./components/Sheet";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import type {
-  Capabilities, ExportMemory, FilterKey, Job, Library, MergeSuggestion, Person, Photo,
-  Settings, Stats,
+  Capabilities, ExportMemory, FilterKey, ImportOptions, Job, Library, MergeSuggestion,
+  Person, Photo, Settings, Stats,
 } from "./types";
 
 const FALLBACK_SETTINGS: Settings = {
@@ -22,6 +22,18 @@ const FALLBACK_SETTINGS: Settings = {
   person_coverage: true,
   target_ratio: null,
   overwrite_xmp: true,
+  recursive: true,
+  import_types: ["raw", "jpeg", "tiff", "heic"],
+  ingest: false,
+  backup_dir: null,
+};
+
+/** Parent of a path, for the drop fallback: the folder a dropped shoot most
+ *  likely came from is beside the last shoot that was opened. */
+const parentOf = (path: string): string => {
+  const parts = path.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length ? `/${parts.join("/")}` : "/";
 };
 
 function mergeSettings(
@@ -155,14 +167,17 @@ export default function App() {
   );
 
   const openFolder = useCallback(
-    async (path: string) => {
+    async (path: string, options?: ImportOptions) => {
       try {
         setError(null);
-        const created = await api.createLibrary(path);
+        const created = await api.createLibrary(path, options);
         setLibraries(await api.libraries());
         setLibrary(created);
+        // The import options are part of the scan's settings: they decide
+        // what gets discovered and whether the photos are ingested first.
+        // They persist with the library, so a rescan reuses them.
         const active = mergeSettings(capabilities?.default_settings ?? null,
-                                     created.settings);
+                                     { ...created.settings, ...(options ?? {}) });
         setSettings(active);
         setFilter("all");
         setPersonId(null);
@@ -327,6 +342,7 @@ export default function App() {
         libraries={libraries}
         capabilities={capabilities}
         error={error}
+        lastParent={libraries[0] ? parentOf(libraries[0].root_path) : undefined}
         onOpen={openFolder}
         onSelect={(chosen) => {
           setLibrary(chosen);
