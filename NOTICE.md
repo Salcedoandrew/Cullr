@@ -23,10 +23,11 @@ informed this implementation and are credited here.
 | onnxruntime (optional `semantic` extra) | MIT | CPU inference for the scene model. Not shipped unless the extra is installed at build time. |
 | OpenCV | Apache-2.0 | Decoding, Laplacian/Sobel metrics, perceptual hashing primitives. |
 | Pillow, pillow-heif | HPND / BSD-3 | Decoding, EXIF, HEIC support. |
-| rawpy / LibRaw (optional) | MIT / LGPL-2.1 (LibRaw: CDDL-1.0 or LGPL-2.1) | Optional RAW decode. Not required for JPEG/HEIC workflows; review LibRaw's terms before redistributing binaries. |
+| rawpy / LibRaw | MIT / LGPL-2.1 (LibRaw: CDDL-1.0 or LGPL-2.1) | RAW decoding. rawpy calls a LibRaw build linked into its own extension module, so the released `.app` **redistributes LibRaw** — it is part of the bundle, not a user-installed extra, and this notice travels inside the app. Redistributing it means meeting LibRaw's terms (either CDDL-1.0 or LGPL-2.1; take the LGPL route and the app must allow the library to be replaced). |
 | FastAPI, Starlette, Uvicorn, Pydantic | MIT / BSD-3 | HTTP API. |
 | React, Vite | MIT | Review interface. |
 | Test fixtures in `.research/fixtures/` | CC BY-SA 3.0/4.0 (Wikimedia Commons) | Downloaded only for local verification and **not** redistributed: the directory is git-ignored. |
+| `backend/tests/fixtures/olympus_c5050z.orf` | CC0 (public domain) | RAW test fixture from [raw.pixls.us](https://raw.pixls.us/) (Olympus C-5050Z, SHA-256 `f4b013e78204ebaadd740d93416080856b3c51ec154760e2e2de0e552873044a`), committed so the RAW decode path — and the release build's own smoke test — can be verified without a camera. CC0 needs no attribution; recorded here so the file's origin is not a mystery later. |
 
 ## Deliberately not used
 

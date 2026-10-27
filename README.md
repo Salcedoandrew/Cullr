@@ -198,9 +198,11 @@ port that closes with the window.
 
 ### Formats, speed, privacy
 
-* **Formats** — JPEG, PNG, TIFF, WebP and HEIC/HEIF; RAW through `rawpy` or the
-  embedded preview. EXIF capture time, camera, lens, focal length and orientation
-  are read, and rotation is applied before scoring.
+* **Formats** — JPEG, PNG, TIFF, WebP and HEIC/HEIF, plus RAW (CR3, CR2, NEF,
+  ARW, RAF, RW2, ORF, PEF, SRW, DNG) through `rawpy`, which every build bundles.
+  A RAW frame is analysed from the camera's embedded JPEG preview, so a shoot of
+  RAW files scans at the same speed as JPEG. EXIF capture time, camera, lens,
+  focal length and orientation are read, and rotation is applied before scoring.
 * **Speed** — roughly 4–8 photos/second on an M-series laptop, CPU only (8
   threads), so a 1,000-frame shoot analyses in a few minutes.
 * **Privacy** — no uploads, no account and no telemetry; model weights are
@@ -217,10 +219,11 @@ port that closes with the window.
 Requires Python 3.10–3.12 and Node 18+.
 
 ```bash
-# 1. Python environment
+# 1. Python environment — the same extras the released app bundles: faces for
+#    blink detection, raw for RAW decoding. Install both, or a local cull can
+#    differ from the shipped one in ways only a real shoot reveals.
 uv venv --python 3.11 .venv
-uv pip install --python .venv/bin/python -e "backend[dev]"
-uv pip install --python .venv/bin/python -e "backend[faces]"   # face/blink detection
+uv pip install --python .venv/bin/python -e "backend[dev,faces,raw]"
 
 # 2. Face model (Apache-2.0, ~3.7 MB, checksum-pinned)
 .venv/bin/python -m culler.cli fetch-model
@@ -411,8 +414,7 @@ NOTICE.md          attribution and model licences
 ## 🚫 Not in this version
 
 <!-- limits:start -->
-RAW files decode through `rawpy` only if you install `backend[raw]`; otherwise
-the embedded JPEG preview is used when present. Semantic embeddings
+Semantic embeddings
 (DINOv2/CLIP), a *learned* face embedder (the permissive options were measured
 and deferred — see [`docs/RESEARCH.md`](https://github.com/Salcedoandrew/cullr/blob/main/docs/RESEARCH.md)
 §4.6), naming people, per-person albums, learned per-photographer ranking, and

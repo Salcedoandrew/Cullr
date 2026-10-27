@@ -78,6 +78,33 @@ case "$CAPS" in
   *) echo "onnxruntime missing from the bundle (install backend[semantic]): $CAPS" >&2
      exit 1 ;;
 esac
+# RAW decoding is not optional in a shipped build. Without rawpy the app lists
+# a shoot's RAW files, counts them (so the dialog promises a cull of 3,016
+# frames), and then rejects every one of them as unreadable. 0.8.0 shipped
+# exactly that way; this is the assertion that would have caught it.
+case "$CAPS" in
+  *'"raw":true'*) echo "raw decoding: available" ;;
+  *) echo "rawpy missing from the bundle (install backend[raw]): $CAPS" >&2
+     exit 1 ;;
+esac
+# Importing rawpy is not the same as decoding with it: rawpy carries libraw as
+# a native library, and a native library is what a frozen build loses. So hand
+# the frozen server a real RAW file and insist on the JPEG the picker would
+# show for it.
+RAW_FIXTURE="$ROOT/backend/tests/fixtures/olympus_c5050z.orf"
+if [ ! -s "$RAW_FIXTURE" ]; then
+  echo "no RAW fixture to smoke-test with (expected $RAW_FIXTURE)" >&2
+  exit 1
+fi
+RAW_TILE="$(mktemp)"
+curl -fsS -G --data-urlencode "path=$RAW_FIXTURE" -o "$RAW_TILE" \
+  "$BASE/api/folders/preview?size=256"
+if [ "$(xxd -p -l 2 "$RAW_TILE")" != "ffd8" ]; then
+  echo "the bundle could not decode a RAW file (no JPEG preview rendered)" >&2
+  exit 1
+fi
+echo "raw decoding: rendered a $(wc -c <"$RAW_TILE" | tr -d ' ') byte preview from a RAW"
+rm -f "$RAW_TILE"
 curl -fsS -o /dev/null "$BASE/" && echo "UI: served from the bundle"
 curl -fsS -o /dev/null "$BASE/api/libraries" && echo "API: responding"
 cleanup

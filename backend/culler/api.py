@@ -27,7 +27,7 @@ from .config import (
     strictness_stops,
 )
 from .db import Store, default_data_dir, serialize_photo
-from .imaging import iter_images, render_jpeg
+from .imaging import RAWPY_AVAILABLE, iter_images, render_jpeg
 from .metrics.faces import FaceAnalyzer
 from .metrics.scene import (
     download_model, model_present, model_verified, runtime_available,
@@ -427,6 +427,14 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return {
             "faces": runner.faces.available,
             "faces_error": runner.faces.load_error,
+            # Whether this build can decode RAW files at all. Not a feature
+            # toggle: without rawpy the app lists a RAW folder, promises a cull
+            # of every frame in it, and then rejects all of them as unreadable
+            # (0.8.0, a 3,016-frame wedding, 0 keepers). The release installs
+            # the `raw` extra and desktop/build_macos.sh asserts this flag on
+            # the frozen bundle, so a build without it cannot ship; the flag
+            # exists so the failure is visible from outside as well.
+            "raw": RAWPY_AVAILABLE,
             # Optional: the DINOv2 scene runtime ships with the build, but the
             # weights are a first-use download. The UI offers the toggle only
             # when the runtime is there, and shows download progress until the

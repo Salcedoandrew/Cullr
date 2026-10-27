@@ -54,11 +54,14 @@ jobs:
 
       # No [faces] extra: MediaPipe only ships desktop wheels and the
       # model-dependent tests skip themselves when it is absent. The macOS
-      # release job installs it and exercises the frozen bundle.
+      # release job installs it and exercises the frozen bundle. `raw` is here
+      # because the RAW tests decode a real ORF fixture, and the extra must
+      # match what the release installs -- a dev box missing it is exactly how
+      # 0.8.0 shipped without RAW decoding.
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e "backend[dev]"
+          python -m pip install -e "backend[dev,raw]"
 
       - name: Tests
         run: python -m pytest -q backend

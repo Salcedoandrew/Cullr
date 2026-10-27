@@ -45,7 +45,13 @@ jobs:
           # `semantic` is what lets the shipped app run the scene model: the
           # weights stay a first-use download, the runtime must be inside the
           # bundle. Cullr.spec collects it when it is installed here.
-          .venv/bin/python -m pip install -e "backend[dev,faces,desktop,semantic]"
+          #
+          # `raw` is not optional in a shipped build. Without rawpy the app
+          # still lists RAW files and promises to cull them, then rejects every
+          # one as unreadable: 0.8.0 shipped without this extra and culled a
+          # 3,016-frame wedding to 0 keepers. build_macos.sh asserts the
+          # frozen app can decode a RAW, so removing it fails the build.
+          .venv/bin/python -m pip install -e "backend[dev,faces,desktop,semantic,raw]"
 
       # Fails before the long build if the README's feature block (the source of
       # the release notes) has lost its markers.
