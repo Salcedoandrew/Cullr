@@ -1,4 +1,14 @@
+<p align="center">📸</p>
+
 # Sharpen
+
+### Local-first AI photo culling for macOS: sharpness, eyes-closed, burst de-duplication and a guaranteed keeper of everyone in the shoot.
+
+[![GitHub release](https://img.shields.io/github/v/release/Salcedoandrew/sharpen)](https://github.com/Salcedoandrew/sharpen/releases/latest) [![Top language](https://img.shields.io/github/languages/top/Salcedoandrew/sharpen)](https://github.com/Salcedoandrew/sharpen) [![Last commit](https://img.shields.io/github/last-commit/Salcedoandrew/sharpen/main)](https://github.com/Salcedoandrew/sharpen/commits/main) [![Release](https://img.shields.io/github/actions/workflow/status/Salcedoandrew/sharpen/release.yml?label=Release)](https://github.com/Salcedoandrew/sharpen/actions/workflows/release.yml) [![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)](https://www.python.org/) [![macOS arm64](https://img.shields.io/badge/macOS-arm64-000000?logo=apple)](https://github.com/Salcedoandrew/sharpen/releases/latest)
+
+[About](#-about) | [Technologies](#-technologies) | [Get the app](#-get-the-app) | [What it does](#-what-it-does) | [Quick start](#-quick-start) | [How a decision is made](#-how-a-decision-is-made) | [Verified behaviour](#-verified-behaviour) | [Repository layout](#-repository-layout) | [Not in this version](#-not-in-this-version) | [Licence notes](#-licence-notes)
+
+## 🎯 About
 
 Local-first AI photo culling. Point it at a folder, get back the keepers: sharp
 frames, open eyes, and one best shot from every burst.
@@ -20,7 +30,11 @@ the licensing map, the architecture and the stack rationale — is in
                   └──► XMP sidecars · keeper copies · CSV
 ```
 
-## Get the app
+## 🛠️ Technologies
+
+<img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/python/python-original.svg" alt="Python logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/fastapi/fastapi-original.svg" alt="FastAPI logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/react/react-original.svg" alt="React logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/typescript/typescript-original.svg" alt="TypeScript logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/vite/vite-original.svg" alt="Vite logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/sqlite/sqlite-original.svg" alt="SQLite logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/opencv/opencv-original.svg" alt="OpenCV logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/numpy/numpy-original.svg" alt="NumPy logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/pytest/pytest-original.svg" alt="pytest logo" width="48" height="48"> <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apple/apple-original.svg" alt="Apple logo" width="48" height="48">
+
+## 📥 Get the app
 
 The Mac build is a single `.app` in a drag-to-Applications `.dmg`, published on
 the [releases page](../../releases). Download
@@ -33,7 +47,7 @@ install. Catalog, preview cache and logs live in
 `~/Library/Application Support/Sharpen`, and the app serves itself on a loopback
 port that closes with the window.
 
-## What it does
+## ✨ What it does
 
 * **Sharpness / blur** — Laplacian variance on a normalised 1600 px frame,
   judged three ways: a frame-wide floor, an absolute *face-crop* gate (the eyes
@@ -67,7 +81,7 @@ port that closes with the window.
   the mode and folder of its last export (stored in the catalog, so it follows
   the shoot rather than the browser).
 
-## Quick start
+## 🚀 Quick start
 
 Requires Python 3.10–3.12 and Node 18+.
 
@@ -125,7 +139,7 @@ and attaches the `.dmg` plus `SHA256SUMS` to the release.
 `scan` prints the counts per rejection reason and is idempotent: unchanged files
 are reused, and human decisions survive a rescan. `--force` re-analyses.
 
-## How a decision is made
+## 🧠 How a decision is made
 
 **Composite score** — a weighted mean over the axes that actually apply
 (`sharpness`, `exposure`, `noise`, `contrast`, `eyes_open`, `face_sharpness`,
@@ -176,7 +190,7 @@ together) or *two people* (stop suggesting it). Both answers are stored as face
 ids and re-applied on every later scan, so a rescan never splits a person you
 have already curated.
 
-## Verified behaviour
+## ✅ Verified behaviour
 
 `cd backend && ../.venv/bin/python -m pytest` — **108 tests**, covering the
 metrics, gates, grouping, selection, identity clustering, coverage and the
@@ -203,7 +217,7 @@ Beyond the unit tests, the pipeline was exercised on real photographs:
 Throughput on an M-series laptop, CPU only: **~4–8 photos/second** with face
 analysis (8 threads), so a 1,000-frame shoot analyses in a few minutes.
 
-## Repository layout
+## 🗂️ Repository layout
 
 ```
 backend/culler/
@@ -228,7 +242,7 @@ docs/RESEARCH.md   Aftershoot analysis, repo analysis, licensing, architecture
 NOTICE.md          attribution and model licences
 ```
 
-## Not in this version
+## 🚫 Not in this version
 
 RAW files decode through `rawpy` only if you install `backend[raw]`; otherwise
 the embedded JPEG preview is used when present. Semantic embeddings
@@ -239,10 +253,14 @@ round-trip are deliberately out of scope for the MVP. The desktop bundle is
 Apple silicon only (MediaPipe ships no universal2 wheel) and unsigned, so there
 is no notarised download or auto-update yet.
 
-## Licence notes
+## 📄 Licence notes
 
 The reference repositories are MIT except `AI-POWERED-PHOTO-CULLING`, which has
 **no licence** and was therefore not reused. The face model is Apache-2.0
 (MediaPipe); InsightFace's `buffalo_l` and PyIQA are non-commercial and are
 deliberately absent. Details and the full model table are in
 [`NOTICE.md`](NOTICE.md).
+
+Made with ❤️ by [Andrew Salcedo](https://github.com/Salcedoandrew)
+
+[Back to top](#sharpen)
