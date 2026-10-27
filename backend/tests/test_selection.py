@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from culler.selection import SelectionSignals, lead_score, rank, select
+from culler.selection import (
+    SelectionSignals, lead_score, rank, ranking_key, select,
+)
 
 
 def sig(photo_id: int, quality: float, eyes=None, face_sharpness=None, smile=None,
@@ -62,6 +64,38 @@ def test_group_with_no_acceptable_frame_yields_no_keepers():
     assert result.keeper_ids == []
     assert result.duplicate_ids == []
     assert result.lead_id == 1
+
+
+def test_learned_absent_is_exactly_the_old_score():
+    baseline = sig(1, 0.62, eyes=8.0, face_sharpness=60.0, smile=6.0)
+    with_none = SelectionSignals(photo_id=1, quality=0.62, eyes_open=8.0,
+                                 face_sharpness=60.0, smile=6.0, learned=None)
+    assert lead_score(baseline) == lead_score(with_none)
+    # Neutral 5.0 is "no opinion" and must not move anything either.
+    neutral = SelectionSignals(photo_id=1, quality=0.62, eyes_open=8.0,
+                               face_sharpness=60.0, smile=6.0, learned=5.0)
+    assert lead_score(neutral) == lead_score(baseline)
+
+
+def test_learned_term_is_bounded_to_five_hundredths():
+    for value in (0.0, 5.0, 10.0):
+        base = sig(1, 0.6)
+        learned = SelectionSignals(photo_id=1, quality=0.6, learned=value)
+        assert abs(lead_score(learned) - lead_score(base)) <= 0.05 + 1e-12
+
+
+def test_learned_value_never_overturns_a_real_quality_gap():
+    strong = sig(1, 0.80)
+    weak_but_loved = SelectionSignals(photo_id=2, quality=0.60, learned=10.0)
+    assert lead_score(strong) > lead_score(weak_but_loved)
+    assert rank([weak_but_loved, strong])[0].photo_id == 1
+
+
+def test_ranking_key_is_the_one_ordering():
+    a = sig(1, 0.60, captured_at=100.0)
+    b = sig(2, 0.60, captured_at=101.0)
+    assert ranking_key(a) < ranking_key(b)
+    assert rank([b, a]) == [a, b]
 
 
 def test_selection_requires_members():

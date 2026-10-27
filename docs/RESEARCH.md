@@ -566,6 +566,15 @@ would justify) for the opt-in DINOv2 dedup → optional SFace embeddings
 per-person export → learned keeper ranker on user decisions → Lightroom
 catalogue integration (retoucan's `catalog.rs` approach) → Tauri packaging.
 
+**The learned-ranker gate.** `backend/culler/selection.py` already carries the
+socket: an inert `learned` term (±0.05 around a neutral 5.0, facet's pattern)
+and one `ranking_key` that both best-of-group and the cull-to-target cap sort
+by, so a ranker reaches both paths without a second scoring function to keep in
+step. A ranker ships only if it beats this classical score on a held-out set of
+Andrew's own keep/reject decisions. Until then the term is inert by
+construction: `learned=None` must reproduce today's scores exactly, and the
+ranked decisions of existing shoots must not move.
+
 ---
 
 ## 7. Attribution

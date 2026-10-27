@@ -39,7 +39,7 @@ from .persons import (
     coverage_promotions, person_rows as build_person_rows,
 )
 from .scoring import PhotoScore, group_median_sharpness, score_photo
-from .selection import GroupSelection, SelectionSignals, select
+from .selection import GroupSelection, SelectionSignals, rank, select
 from .similarity import Group, SimilarityItem, find_groups
 
 ProgressCb = Callable[[str, int, int, str], None]
@@ -354,13 +354,15 @@ def _worker_count() -> int:
 
 
 def cull_to_target(updates: list[tuple], ratio: float,
-                   protected: set[int]) -> list[tuple]:
-    """Keep roughly ``ratio`` of the shoot, ranked by measured quality.
+                   protected: set[int],
+                   signals: dict[int, SelectionSignals]) -> list[tuple]:
+    """Keep roughly ``ratio`` of the shoot, ranked by the shared score.
 
     "Cull to target" asks a different question from the gates: not "is this
     frame acceptable" but "how many frames do I want". Keepers are ranked by
-    quality and everything past the target is rejected with reason ``target``,
-    so the sheet can still say why a frame went.
+    ``selection.ranking_key`` -- the same ordering that picks a group lead -- and
+    everything past the target is rejected with reason ``target``, so the sheet
+    can still say why a frame went.
 
     Coverage beats the target: a frame that is someone's only keeper is never
     dropped, which is why the achieved count can sit slightly above it.
@@ -371,9 +373,11 @@ def cull_to_target(updates: list[tuple], ratio: float,
     keeper_ids = {row[6] for row in updates if row[1] == "keep"}
     if len(keeper_ids) <= limit:
         return updates
-    ranked = sorted((row for row in updates if row[1] == "keep"),
-                    key=lambda row: (-row[0], row[6]))
-    winners = {row[6] for row in ranked[:limit]} | (protected & keeper_ids)
+    rankable = [signals[pid] for pid in keeper_ids if pid in signals]
+    winners = {sig.photo_id for sig in rank(rankable)[:limit]}
+    # Never drop a keeper just because no signal was recorded for it.
+    winners |= {pid for pid in keeper_ids if pid not in signals}
+    winners |= protected & keeper_ids
     capped: list[tuple] = []
     for quality, verdict, reason, gid, is_lead, covered_for, photo_id in updates:
         if verdict == "keep" and photo_id not in winners:
@@ -602,7 +606,8 @@ def run_scan(
 
     # ---- 5. optional target cap ------------------------------------------ #
     if settings.target_ratio:
-        updates = cull_to_target(updates, settings.target_ratio, set(covered))
+        updates = cull_to_target(updates, settings.target_ratio, set(covered),
+                                 planned.signals)
         keepers = sum(1 for row in updates if row[1] == "keep")
         final_keepers = {row[6] for row in updates if row[1] == "keep"}
 

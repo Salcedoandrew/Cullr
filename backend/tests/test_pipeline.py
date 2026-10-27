@@ -157,3 +157,40 @@ def test_two_libraries_can_both_have_groups(store, photo_dir, tmp_path):
     second_groups = {r["group_id"] for r in store.photos(second_id) if r["group_id"]}
     assert first_groups and second_groups
     assert first_groups.isdisjoint(second_groups)
+
+
+def test_target_cut_rank_handles_missing_tiebreak_signals():
+    """No eyes / smile / face data: the cap still orders by quality, as before."""
+    from culler.pipeline import cull_to_target
+    from culler.selection import SelectionSignals
+
+    updates = [
+        (0.50, "keep", None, None, 0, None, 1),
+        (0.90, "keep", None, None, 0, None, 2),
+    ]
+    signals = {1: SelectionSignals(photo_id=1, quality=0.50),
+               2: SelectionSignals(photo_id=2, quality=0.90)}
+    capped = cull_to_target(updates, 0.5, set(), signals)
+    assert [row[6] for row in capped if row[1] == "keep"] == [2]
+
+
+def test_target_cut_uses_the_same_ranking_as_best_of_group():
+    """One score for both paths: the group tie-break decides the cap too.
+
+    Two keepers of identical quality; the open-eyes frame survives, which is
+    the tie-break `selection.rank()` already applies inside a group.
+    """
+    from culler.pipeline import cull_to_target
+    from culler.selection import SelectionSignals
+
+    updates = [
+        (0.70, "keep", None, None, 0, None, 1),   # blinking
+        (0.70, "keep", None, None, 0, None, 2),   # open eyes
+    ]
+    signals = {
+        1: SelectionSignals(photo_id=1, quality=0.70, eyes_open=1.0),
+        2: SelectionSignals(photo_id=2, quality=0.70, eyes_open=9.5),
+    }
+    capped = cull_to_target(updates, 0.5, set(), signals)
+    assert [row[6] for row in capped if row[1] == "keep"] == [2]
+    assert any(row[2] == "target" for row in capped)
