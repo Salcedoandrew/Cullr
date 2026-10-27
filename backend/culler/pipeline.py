@@ -276,6 +276,35 @@ def _worker_count() -> int:
     return max(1, min(8, (os.cpu_count() or 4)))
 
 
+def cull_to_target(updates: list[tuple], ratio: float,
+                   protected: set[int]) -> list[tuple]:
+    """Keep roughly ``ratio`` of the shoot, ranked by measured quality.
+
+    "Cull to target" asks a different question from the gates: not "is this
+    frame acceptable" but "how many frames do I want". Keepers are ranked by
+    quality and everything past the target is rejected with reason ``target``,
+    so the sheet can still say why a frame went.
+
+    Coverage beats the target: a frame that is someone's only keeper is never
+    dropped, which is why the achieved count can sit slightly above it.
+    """
+    if not updates:
+        return updates
+    limit = max(1, round(max(0.0, min(1.0, float(ratio))) * len(updates)))
+    keeper_ids = {row[6] for row in updates if row[1] == "keep"}
+    if len(keeper_ids) <= limit:
+        return updates
+    ranked = sorted((row for row in updates if row[1] == "keep"),
+                    key=lambda row: (-row[0], row[6]))
+    winners = {row[6] for row in ranked[:limit]} | (protected & keeper_ids)
+    capped: list[tuple] = []
+    for quality, verdict, reason, gid, is_lead, covered_for, photo_id in updates:
+        if verdict == "keep" and photo_id not in winners:
+            verdict, reason = "reject", "target"
+        capped.append((quality, verdict, reason, gid, is_lead, covered_for, photo_id))
+    return capped
+
+
 def run_scan(
     store: Store,
     library_id: int,
@@ -445,6 +474,12 @@ def run_scan(
             final_keepers.add(photo.photo_id)
         updates.append((score.quality, verdict, reason, gid, is_lead,
                         covered_for, photo.photo_id))
+
+    # ---- 5. optional target cap ------------------------------------------ #
+    if settings.target_ratio:
+        updates = cull_to_target(updates, settings.target_ratio, set(covered))
+        keepers = sum(1 for row in updates if row[1] == "keep")
+        final_keepers = {row[6] for row in updates if row[1] == "keep"}
 
     store.replace_groups(library_id, group_rows)
     store.update_decisions(updates)

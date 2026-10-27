@@ -138,9 +138,9 @@ def cmd_export(args) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cull",
-        description="Sharpen — local AI photo culling (quality, blinks, duplicates)",
+        description="Cullr — local AI photo culling (quality, blinks, duplicates)",
     )
-    parser.add_argument("--data-dir", help="catalog/preview directory (default ~/.sharpen)")
+    parser.add_argument("--data-dir", help="catalog/preview directory (default ~/.cullr)")
     sub = parser.add_subparsers(dest="command", required=True)
 
     scan = sub.add_parser("scan", help="analyse a folder and score every photo")

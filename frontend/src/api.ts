@@ -101,6 +101,10 @@ export const previewUrl = (photo: Photo): string =>
 export const faceUrl = (photoId: number, faceId: number): string =>
   `/api/photos/${photoId}/face/${faceId}`;
 
+/** Tile for one image in the folder picker (decoded and cached on demand). */
+export const folderPreviewUrl = (path: string, size = 256): string =>
+  `/api/folders/preview?size=${size}&path=${encodeURIComponent(path)}`;
+
 export function personLabel(people: Person[], personId: number | null): string | null {
   if (personId === null) return null;
   return people.find((person) => person.id === personId)?.label ?? null;
@@ -118,6 +122,8 @@ export function reasonLabel(reason: string | null): string {
       return "Eyes closed";
     case "duplicate":
       return "Duplicate";
+    case "target":
+      return "Over target";
     case "unreadable":
       return "Unreadable file";
     default:

@@ -57,10 +57,10 @@ jobs:
       # Builds the UI, draws the icon, freezes the .app, smoke-tests the frozen
       # service (it must answer /api/capabilities with faces enabled), then
       # signs ad-hoc and packs the .dmg.
-      - name: Build Sharpen.app and .dmg
+      - name: Build Cullr.app and .dmg
         env:
           PYTHON: ${{ github.workspace }}/.venv/bin/python
-          SHARPEN_VERSION: ${{ steps.version.outputs.value }}
+          CULLR_VERSION: ${{ steps.version.outputs.value }}
         run: bash desktop/build_macos.sh
 
       - name: Checksum
@@ -68,7 +68,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Sharpen-${{ steps.version.outputs.value }}-dmg
+          name: Cullr-${{ steps.version.outputs.value }}-dmg
           path: |
             dist/*.dmg
             dist/SHA256SUMS
@@ -85,9 +85,9 @@ jobs:
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             changelog="$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
               -f tag_name="$GITHUB_REF_NAME" -f target_commitish="$GITHUB_SHA" -q .body)"
-            caveat=$'Unsigned build (Apple silicon). Drag **Sharpen** to Applications, then right-click it → **Open** the first time: Gatekeeper blocks a plain double-click until the app has been opened once.\n\nEverything runs on your machine: no uploads, no account. Verify the download against `SHA256SUMS`; dependency and model licences are in `NOTICE.md`, also inside the app bundle.'
+            caveat=$'Unsigned build (Apple silicon). Drag **Cullr** to Applications, then right-click it → **Open** the first time: Gatekeeper blocks a plain double-click until the app has been opened once.\n\nEverything runs on your machine: no uploads, no account. Verify the download against `SHA256SUMS`; dependency and model licences are in `NOTICE.md`, also inside the app bundle.'
             gh release create "$GITHUB_REF_NAME" \
-              --title "Sharpen $version" \
+              --title "Cullr $version" \
               --notes "$caveat"$'\n\n'"$changelog"
           fi
           gh release upload "$GITHUB_REF_NAME" dist/*.dmg dist/SHA256SUMS --clobber

@@ -52,6 +52,21 @@ def test_sidecar_only_raw_by_default(library):
     assert result.skipped == 6
 
 
+def test_sidecars_can_leave_existing_files_alone(library):
+    store, library_id, folder = library
+    keeper = next(r for r in store.photos(library_id) if r["verdict"] == "keep")
+    sidecar = folder / f"{keeper['filename']}.xmp"
+    sidecar.write_text("hand-rated in Lightroom", encoding="utf-8")
+
+    result = write_sidecars(store, library_id, only_raw=False, overwrite=False)
+    assert result.skipped >= 1
+    assert sidecar.read_text(encoding="utf-8") == "hand-rated in Lightroom"
+
+    # The default still replaces it, which is what an export is expected to do.
+    write_sidecars(store, library_id, only_raw=False)
+    assert "xmp:Rating" in sidecar.read_text(encoding="utf-8")
+
+
 def test_star_overrides_rating(library):
     store, library_id, folder = library
     keeper = next(r for r in store.photos(library_id) if r["verdict"] == "keep")

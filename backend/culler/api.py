@@ -2,8 +2,15 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+import plistlib
+import re
+import subprocess
+import sys
 import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +18,12 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from PIL import Image as PILImage
 from pydantic import BaseModel, Field
 
 from .config import (
-    ANALYSIS_LONG_EDGE, PRESETS, THUMB_LONG_EDGE, CullingSettings, resource_path,
+    ANALYSIS_LONG_EDGE, IMAGE_EXTENSIONS, PRESETS, THUMB_LONG_EDGE, CullingSettings,
+    resource_path,
 )
 from .db import Store, default_data_dir, serialize_photo
 from .imaging import render_jpeg
@@ -24,6 +33,171 @@ from .pipeline import run_scan
 
 FRONTEND_DIST = resource_path("frontend", "dist")
 FACE_CROP_EDGE = 192
+
+# The folder picker is a Finder-style window: a sidebar of places, a grid of
+# folders and files, and a preview tile per image. Counts and dimensions are
+# read with a small thread pool because each one is a separate stat/open and a
+# folder on a slow external disk would otherwise stall the listing.
+PICKER_ENTRY_LIMIT = 400
+PICKER_FAVORITES = ("Desktop", "Documents", "Downloads", "Pictures", "Movies", "Applications")
+NETWORK_FILESYSTEMS = {"smbfs", "nfs", "afpfs", "webdav"}
+_MOUNT_CACHE: tuple[float, dict[str, list[dict]]] = (0.0, {})
+_BOOT_VOLUME = ""
+
+
+def _boot_volume_name() -> str:
+    """The startup disk's label, which is what Finder puts beside its icon."""
+    global _BOOT_VOLUME
+    if not _BOOT_VOLUME:
+        # Only macOS has a Finder to imitate; elsewhere the root is just root.
+        name = "Macintosh HD" if sys.platform == "darwin" else "/"
+        try:
+            info = subprocess.run(["/usr/sbin/diskutil", "info", "-plist", "/"],
+                                  capture_output=True, timeout=5, check=False)
+            label = plistlib.loads(info.stdout).get("VolumeName")
+            if isinstance(label, str) and label.strip():
+                name = label.strip()
+        except (OSError, subprocess.SubprocessError, ValueError, plistlib.InvalidFileException):
+            pass
+        _BOOT_VOLUME = name
+    return _BOOT_VOLUME
+
+
+def _parse_mounts() -> list[dict]:
+    """Mounted volumes, from ``mount`` (macOS has no /etc/mtab).
+
+    Format: ``<device> on <path> (<fstype>, <options>, ...)``. System mounts are
+    ``nobrowse`` and are skipped, so only what Finder would show survives.
+    """
+    try:
+        listing = subprocess.run(["/sbin/mount"], capture_output=True, text=True,
+                                 timeout=5, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    mounts: list[dict] = []
+    for line in listing.splitlines():
+        match = re.match(r"^(?P<dev>.+?) on (?P<path>.+) \((?P<opts>[^)]*)\)$", line)
+        if not match:
+            continue
+        options = {option.strip() for option in match.group("opts").split(",")}
+        if "nobrowse" in options:
+            continue
+        path = match.group("path")
+        fstype = next(iter(options), "")
+        if fstype in ("devfs", "autofs"):
+            continue
+        mounts.append({"path": path, "fstype": fstype})
+    return mounts
+
+
+def _sidebar() -> dict[str, list[dict]]:
+    """Favourites, network shares and volumes, cached because it changes slowly."""
+    global _MOUNT_CACHE
+    cached_at, cached = _MOUNT_CACHE
+    if cached and time.monotonic() - cached_at < 5.0:
+        return cached
+
+    home = Path.home()
+    favorites = []
+    for name in ("Home", *PICKER_FAVORITES):
+        path = home if name == "Home" else home / name
+        if name == "Applications":  # Finder's row is the system folder, not ~/Applications
+            path = Path("/Applications")
+        try:
+            if path.is_dir():
+                favorites.append({"name": name, "path": str(path)})
+        except OSError:
+            continue
+
+    mounts = _parse_mounts()
+    shared = []
+    locations = []
+    for mount in mounts:
+        path = Path(mount["path"])
+        if mount["fstype"] in NETWORK_FILESYSTEMS:
+            shared.append({"name": path.name or mount["fstype"], "path": str(path)})
+        if path == Path("/"):
+            locations.append({"name": _boot_volume_name(), "path": "/"})
+        elif str(path).startswith("/Volumes/"):
+            locations.append({"name": path.name, "path": str(path)})
+    if not locations:  # `mount` unavailable: still offer whatever /Volumes holds
+        locations = [{"name": _boot_volume_name(), "path": "/"}]
+        try:
+            locations += [{"name": child.name, "path": str(child)}
+                          for child in sorted(Path("/Volumes").iterdir())
+                          if child.is_dir()]
+        except OSError:
+            pass
+
+    sidebar = {"favorites": favorites, "shared": shared, "locations": locations}
+    _MOUNT_CACHE = (time.monotonic(), sidebar)
+    return sidebar
+
+
+def _folder_meta(path: str) -> dict:
+    """What Finder prints under a folder: how much is in it, and can we write."""
+    try:
+        with os.scandir(path) as entries:
+            count: int | None = sum(1 for e in entries if not e.name.startswith("."))
+    except OSError:
+        count = None
+    return {"items": count, "writable": os.access(path, os.W_OK)}
+
+
+def _image_size(path: str) -> tuple[int, int] | None:
+    """Dimensions from the file header only — no decode, no thumbnail."""
+    import warnings
+
+    try:
+        with warnings.catch_warnings():
+            # A 100 MP scan in a browsed folder is not a reason to log a warning
+            # every time the picker opens.
+            warnings.simplefilter("ignore")
+            with PILImage.open(path) as image:
+                return image.width, image.height
+    except Exception:  # noqa: BLE001 - a broken or exotic file is just a plain icon
+        return None
+
+
+def _picker_entries(path: Path) -> tuple[list[dict], bool]:
+    """Folders first, then files, with the metadata Finder prints underneath."""
+    try:
+        with os.scandir(path) as scanned:
+            raw = [entry for entry in scanned if not entry.name.startswith(".")]
+    except PermissionError:
+        raise HTTPException(403, f"permission denied: {path}") from None
+
+    def is_dir(entry: os.DirEntry) -> bool:
+        try:
+            return entry.is_dir()
+        except OSError:
+            return False
+
+    directories = sorted((e for e in raw if is_dir(e)), key=lambda e: e.name.lower())
+    files = sorted((e for e in raw if not is_dir(e)), key=lambda e: e.name.lower())
+    truncated = len(directories) > PICKER_ENTRY_LIMIT or len(files) > PICKER_ENTRY_LIMIT
+    directories, files = directories[:PICKER_ENTRY_LIMIT], files[:PICKER_ENTRY_LIMIT]
+    images = [e for e in files if e.name.lower().endswith(tuple(IMAGE_EXTENSIONS))]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        metas = list(pool.map(_folder_meta, [e.path for e in directories]))
+        sizes = dict(zip([e.path for e in images], pool.map(_image_size, [e.path for e in images])))
+
+    entries = [{"name": e.name, "path": e.path, "kind": "folder", **meta}
+               for e, meta in zip(directories, metas)]
+    for entry in files:
+        info: dict = {"name": entry.name, "path": entry.path, "kind": "file"}
+        try:
+            info["size"] = entry.stat().st_size
+        except OSError:
+            info["size"] = None
+        if entry.path in sizes:
+            info["kind"] = "image"
+            dimensions = sizes[entry.path]
+            if dimensions:
+                info["width"], info["height"] = dimensions
+        entries.append(info)
+    return entries, truncated
 
 
 def _cached_preview(cache_dir: Path, photo_id: int, row: dict,
@@ -165,7 +339,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     cache_dir = data_dir / "previews"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    app = FastAPI(title="Sharpen — AI photo culling", version="0.1.0")
+    app = FastAPI(title="Cullr — AI photo culling", version="0.2.0")
     app.state.store = store
     app.state.runner = runner
     app.add_middleware(
@@ -192,10 +366,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     # ---- folders ------------------------------------------------------- #
     @app.get("/api/folders")
     def folders(path: str | None = None) -> dict:
-        """List sub-folders so the UI can offer a picker instead of a text box.
+        """One Finder-style listing: entries, plus the sidebar places.
 
-        Only directories are returned: export destinations are folders, and
-        listing files would tempt the caller into treating one as a target.
+        ``folders`` stays directory-only (it is the contract the export flow was
+        built on); ``entries`` adds files so the picker can show the folder the
+        way the OS does.
         """
         start = Path(path).expanduser() if path else Path.home()
         try:
@@ -204,22 +379,49 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             raise HTTPException(400, f"cannot open {start}") from None
         if not resolved.is_dir():
             raise HTTPException(400, "not a folder")
-        try:
-            children = [entry for entry in resolved.iterdir()
-                        if entry.is_dir() and not entry.name.startswith(".")]
-        except PermissionError:
-            raise HTTPException(403, f"permission denied: {resolved}") from None
-        children.sort(key=lambda entry: entry.name.lower())
+        entries, truncated = _picker_entries(resolved)
         parent = resolved.parent
         return {
             "path": str(resolved),
             "parent": str(parent) if parent != resolved else None,
             "home": str(Path.home()),
             "writable": os.access(resolved, os.W_OK),
-            "folders": [{"name": entry.name, "path": str(entry)}
-                        for entry in children[:500]],
-            "truncated": len(children) > 500,
+            "folders": [{"name": entry["name"], "path": entry["path"]}
+                        for entry in entries if entry["kind"] == "folder"][:500],
+            "entries": entries,
+            "truncated": truncated,
+            "sidebar": _sidebar(),
         }
+
+    @app.get("/api/folders/preview")
+    def folder_preview(path: str, size: int = Query(256, ge=64, le=512)) -> Response:
+        """A tile for one image in the picker, decoded on demand and cached.
+
+        Separate from the library previews on purpose: these are arbitrary paths
+        chosen by the user, not rows in the catalog.
+        """
+        target = Path(path).expanduser()
+        if target.suffix.lower() not in IMAGE_EXTENSIONS:
+            raise HTTPException(400, "not a supported image")
+        try:
+            stat = target.stat()
+        except OSError:
+            raise HTTPException(404, "cannot open file") from None
+        if not target.is_file():
+            raise HTTPException(404, "not a file")
+        key = hashlib.sha1(
+            f"{target.resolve()}|{stat.st_mtime_ns}|{stat.st_size}|{size}".encode()
+        ).hexdigest()
+        tile_dir = cache_dir / "picker"
+        tile_dir.mkdir(parents=True, exist_ok=True)
+        tile = tile_dir / f"{key}.jpg"
+        if not tile.exists():
+            data = render_jpeg(target, size, quality=78)
+            if data is None:
+                raise HTTPException(404, "cannot decode image")
+            tile.write_bytes(data)
+        return FileResponse(tile, media_type="image/jpeg",
+                            headers={"Cache-Control": "private, max-age=600"})
 
     @app.post("/api/folders", status_code=201)
     def create_folder(body: FolderCreateRequest) -> dict:
@@ -443,12 +645,21 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     def export(library_id: int, body: ExportRequest) -> dict:
         from . import export as export_mod
 
+        library = store.get_library(library_id)
+        if not library:
+            raise HTTPException(404, "library not found")
+        # The pre-cull window decides whether an existing sidecar is replaced;
+        # export is where that opinion is acted on.
+        settings = CullingSettings.from_dict(_json_or_none(library.get("settings_json")))
+
         if body.mode == "sidecar":
-            result = export_mod.write_sidecars(store, library_id, only_raw=True,
-                                               include_rejects=body.include_rejects)
+            result = export_mod.write_sidecars(
+                store, library_id, only_raw=True, include_rejects=body.include_rejects,
+                overwrite=settings.overwrite_xmp)
         elif body.mode == "sidecar_all":
-            result = export_mod.write_sidecars(store, library_id, only_raw=False,
-                                               include_rejects=body.include_rejects)
+            result = export_mod.write_sidecars(
+                store, library_id, only_raw=False, include_rejects=body.include_rejects,
+                overwrite=settings.overwrite_xmp)
         elif body.mode == "copy":
             if not body.dest:
                 raise HTTPException(400, "dest is required for copy export")
@@ -498,4 +709,4 @@ def _json_or_none(value: Any) -> dict | None:
 
 # No module-level app instance: importing this module must not create a catalog
 # directory or load the face model. `uvicorn culler.api:create_app --factory`
-# builds it, honouring SHARPEN_DATA_DIR.
+# builds it, honouring CULLR_DATA_DIR.

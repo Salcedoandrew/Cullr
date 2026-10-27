@@ -134,13 +134,13 @@ def utcnow() -> str:
 
 
 def default_data_dir() -> Path:
-    override = os.environ.get("SHARPEN_DATA_DIR")
+    override = os.environ.get("CULLR_DATA_DIR")
     if override:
         return Path(override).expanduser()
     if getattr(sys, "frozen", False):
         # A bundled app must not write inside its own (read-only) bundle.
-        return Path.home() / "Library" / "Application Support" / "Sharpen"
-    return Path.home() / ".sharpen"
+        return Path.home() / "Library" / "Application Support" / "Cullr"
+    return Path.home() / ".cullr"
 
 
 class Store:

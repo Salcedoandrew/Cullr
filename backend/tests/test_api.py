@@ -233,6 +233,51 @@ def test_folder_listing_backs_the_export_picker(client, tmp_path):
                       params={"path": str(root / "file.jpg")}).status_code == 400
 
 
+def test_folder_listing_is_finder_shaped(client, tmp_path):
+    root = tmp_path / "browse"
+    (root / "keep").mkdir(parents=True)
+    (root / "keep" / "a.jpg").write_bytes(b"x")
+    (root / "notes.txt").write_text("hi")
+    (root / ".hidden.txt").write_text("no")
+    # A file that claims to be a JPEG but cannot be read: still a file, no size.
+    (root / "frame.jpg").write_bytes(b"not really a jpeg")
+
+    body = client.get("/api/folders", params={"path": str(root)}).json()
+    entries = {entry["name"]: entry for entry in body["entries"]}
+
+    assert body["entries"][0]["kind"] == "folder"      # folders come first
+    assert entries["keep"]["items"] == 1                # hidden children not counted
+    assert entries["keep"]["writable"] is True
+    assert entries["notes.txt"]["kind"] == "file"
+    assert entries["notes.txt"]["size"] == 2
+    assert entries["frame.jpg"]["kind"] == "image"
+    assert "width" not in entries["frame.jpg"]
+    assert ".hidden.txt" not in entries
+    # The old contract still holds: directories only, in name order.
+    assert [folder["name"] for folder in body["folders"]] == ["keep"]
+
+    sidebar = body["sidebar"]
+    assert sidebar["favorites"][0]["name"] == "Home"
+    assert any(place["path"] == "/" for place in sidebar["locations"])
+    assert isinstance(sidebar["shared"], list)
+
+
+def test_folder_preview_serves_a_tile_only_for_images(client, photo_dir):
+    tile = client.get("/api/folders/preview", params={"path": str(photo_dir / "IMG_0001.jpg")})
+    assert tile.status_code == 200
+    assert tile.headers["content-type"] == "image/jpeg"
+    assert tile.content[:2] == b"\xff\xd8"                 # JPEG SOI
+    # Second call comes from the cache and is byte-identical.
+    again = client.get("/api/folders/preview", params={"path": str(photo_dir / "IMG_0001.jpg")})
+    assert again.content == tile.content
+
+    notes = photo_dir / "notes.txt"
+    notes.write_text("not an image")
+    assert client.get("/api/folders/preview", params={"path": str(notes)}).status_code == 400
+    missing = client.get("/api/folders/preview", params={"path": str(photo_dir / "nope.jpg")})
+    assert missing.status_code == 404
+
+
 def test_folder_can_be_created_while_browsing(client, tmp_path):
     root = tmp_path / "delivery"
     root.mkdir()

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { CullDialog } from "./components/CullDialog";
 import { ExportPanel } from "./components/ExportPanel";
 import { Import } from "./components/Import";
 import { Loupe } from "./components/Loupe";
@@ -19,6 +20,8 @@ const FALLBACK_SETTINGS: Settings = {
   detect_blinks: true,
   group_duplicates: true,
   person_coverage: true,
+  target_ratio: null,
+  overwrite_xmp: true,
 };
 
 function mergeSettings(
@@ -49,6 +52,7 @@ export default function App() {
   const [loupeId, setLoupeId] = useState<number | null>(null);
   const [job, setJob] = useState<Job | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [cullOpen, setCullOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const busy = job?.status === "running";
@@ -244,6 +248,7 @@ export default function App() {
       // Escape closes a dialog even from inside one of its inputs.
       if (event.key === "Escape") {
         if (exportOpen) setExportOpen(false);
+        else if (cullOpen) setCullOpen(false);
         else if (loupeId !== null) setLoupeId(null);
         return;
       }
@@ -253,7 +258,7 @@ export default function App() {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
       // A dialog owns the keyboard while it is open: no reviewing through it.
-      if (exportOpen) return;
+      if (exportOpen || cullOpen) return;
       if (!selected) {
         if (event.key === " " && photos.length) {
           event.preventDefault();
@@ -310,10 +315,10 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, photos, loupeId, exportOpen, move, nextGroup, decide]);
+  }, [selected, photos, loupeId, exportOpen, cullOpen, move, nextGroup, decide]);
 
   if (!capabilities) {
-    return <div className="boot">Starting Sharpen…</div>;
+    return <div className="boot">Starting Cullr…</div>;
   }
 
   if (!library) {
@@ -337,12 +342,9 @@ export default function App() {
       <TopBar
         library={library}
         stats={stats}
-        settings={settings}
-        capabilities={capabilities}
         job={job}
         busy={busy}
-        onChange={setSettings}
-        onScan={(force) => void startScan(library.id, settings, force)}
+        onOpenCull={() => setCullOpen(true)}
         onExport={() => setExportOpen(true)}
       />
 
@@ -399,6 +401,25 @@ export default function App() {
           onStar={(star) => void decide(loupePhoto, undefined, star)}
           onPrev={() => move(-1)}
           onNext={() => move(1)}
+        />
+      )}
+
+      {cullOpen && (
+        <CullDialog
+          stats={stats}
+          settings={settings}
+          capabilities={capabilities}
+          busy={busy}
+          onChange={setSettings}
+          onStart={(force) => {
+            setCullOpen(false);
+            void startScan(library.id, settings, force);
+          }}
+          onOpenExport={() => {
+            setCullOpen(false);
+            setExportOpen(true);
+          }}
+          onClose={() => setCullOpen(false)}
         />
       )}
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Sharpen.app and a drag-to-Applications .dmg on macOS.
+# Build Cullr.app and a drag-to-Applications .dmg on macOS.
 #
 # Everything the app needs — the built UI, the MediaPipe face model, the Python
 # runtime — is baked into the bundle, which is why the result is a large but
@@ -10,8 +10,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-APP_NAME="Sharpen"
-VERSION="${SHARPEN_VERSION:-0.1.0}"
+APP_NAME="Cullr"
+VERSION="${CULLR_VERSION:-0.2.0}"
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 ARCH="$(uname -m)"
 DMG="$ROOT/dist/${APP_NAME}-${VERSION}-${ARCH}.dmg"
@@ -40,10 +40,10 @@ step "Icon"
 
 step "Bundle"
 rm -rf "$ROOT/build" "$ROOT/dist"
-SHARPEN_VERSION="$VERSION" "$PYTHON" -m PyInstaller \
+CULLR_VERSION="$VERSION" "$PYTHON" -m PyInstaller \
   --noconfirm --clean --log-level WARN \
   --distpath "$ROOT/dist" --workpath "$ROOT/build" \
-  "$ROOT/desktop/Sharpen.spec"
+  "$ROOT/desktop/Cullr.spec"
 
 APP="$ROOT/dist/${APP_NAME}.app"
 test -d "$APP"

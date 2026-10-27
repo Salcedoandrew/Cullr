@@ -1,6 +1,6 @@
 # AI Photo Culling — Research, Architecture & Stack
 
-This document is the design record for **Sharpen** (working name), an AI photo-culling
+This document is the design record for **Cullr** (working name), an AI photo-culling
 application modelled on [Aftershoot](https://aftershoot.com/selects/). It covers:
 
 1. How Aftershoot actually works (what is publicly documented).
@@ -390,6 +390,30 @@ A mid-blink frame (eyes ≈ 1) therefore loses ≈ 0.12 to an open-eyes frame
 bad frame. The lead is always the best *acceptable* frame, and ties go to the
 earliest capture. Groups always keep ≥ `keep_min_per_group`
 frames, so "auto-cull" can never empty a moment.
+
+### 4.5b Cull to target (beta)
+
+A second question sits next to the gates: not "is this frame acceptable" but
+"how many frames do I want". Aftershoot exposes exactly this as a target
+percentage, and it is the one place where a per-group guarantee and a global
+count are in direct tension.
+
+```
+limit   = round(target_ratio · analysed_frames)
+keepers = rank(all keepers by composite quality) [ : limit ]  ∪  coverage_keepers
+```
+
+Ranking is by measured quality (ties by photo id, so a rescan is deterministic),
+and losers are rejected with reason `target` instead of vanishing — the sheet
+still explains itself. Two deliberate exceptions:
+
+* **Coverage is never cut.** A frame that is someone's only keeper survives the
+  cap, so the achieved count can exceed the target by a few. Silently losing a
+guest to hit a number is the one outcome the people pass exists to prevent.
+* **A group can end up with no keeper.** The per-group minimum is a property of
+  the gates, not of the target; below the target count the cap wins, which is
+  what a tighter edit means. `is_lead` stays on the group's best frame so the
+  comparison is still visible.
 
 ### 4.6 People: identity clustering and the coverage guarantee
 

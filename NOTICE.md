@@ -1,6 +1,6 @@
 # Third-party notices
 
-Sharpen implements its algorithms as new code. No source files were copied
+Cullr implements its algorithms as new code. No source files were copied
 verbatim from the projects below; their designs, thresholds and data structures
 informed this implementation and are credited here.
 
@@ -30,7 +30,7 @@ informed this implementation and are credited here.
 
 * **InsightFace / `buffalo_l`** and **PyIQA** — weights are non-commercial. Both
   photo-pipeline and facet ship them by default; facet also ships a licensing
-  gate for exactly this reason. Sharpen uses MediaPipe instead.
+  gate for exactly this reason. Cullr uses MediaPipe instead.
 * **SAMP-Net, U2-Net-P, LAION aesthetic head** — licence unclear per facet's own
   registry.
 * **CLIP / DINOv2** — permissive code (MIT / Apache-2.0) but unverified training

@@ -1,4 +1,4 @@
-"""Draw the app icon and emit assets/Sharpen.icns (macOS iconutil).
+"""Draw the app icon and emit assets/Cullr.icns (macOS iconutil).
 
 Generated rather than hand-drawn so the mark can be rebuilt in CI without a
 binary design file in the repository. Brass aperture on a warm-black tile, the
@@ -103,7 +103,7 @@ def build_png() -> Path:
 
 
 def build_icns(png: Path) -> Path:
-    iconset = ASSETS / "Sharpen.iconset"
+    iconset = ASSETS / "Cullr.iconset"
     if iconset.exists():
         shutil.rmtree(iconset)
     iconset.mkdir(parents=True)
@@ -113,7 +113,7 @@ def build_icns(png: Path) -> Path:
             edge = size * scale
             resized = source.resize((edge, edge), Image.LANCZOS)
             resized.save(iconset / f"icon_{size}x{size}{suffix}.png")
-    target = ASSETS / "Sharpen.icns"
+    target = ASSETS / "Cullr.icns"
     subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(target)], check=True)
     shutil.rmtree(iconset)
     return target

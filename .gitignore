@@ -18,11 +18,11 @@ models/*.task
 .research/
 
 # App icon is drawn by desktop/make_icon.py at build time
-assets/Sharpen.icns
+assets/Cullr.icns
 assets/icon-1024.png
 
 # Local catalogs
-.sharpen/
+.cullr/
 *.db
 *.db-wal
 *.db-shm

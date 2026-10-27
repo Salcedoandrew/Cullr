@@ -26,7 +26,7 @@ from .config import RAW_EXTENSIONS
 from .db import Store
 
 XMP_TEMPLATE = """<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
-<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Sharpen 0.1">
+<x:xmpmeta xmlns:x="adobe:ns:meta/" x:xmptk="Cullr 0.2">
  <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
   <rdf:Description rdf:about=""
     xmlns:xmp="http://ns.adobe.com/xap/1.0/"
@@ -69,7 +69,13 @@ def _rating(row: dict) -> tuple[int, str]:
 
 
 def write_sidecars(store: Store, library_id: int, only_raw: bool = True,
-                   include_rejects: bool = True) -> ExportResult:
+                   include_rejects: bool = True, overwrite: bool = True) -> ExportResult:
+    """Write one sidecar per frame.
+
+    ``overwrite=False`` leaves an existing sidecar alone: a photographer who has
+    already rated frames in Lightroom should not have those ratings replaced by
+    the cull's opinion just because they exported twice.
+    """
     result = ExportResult()
     for row in store.photos(library_id, "all", sort="name"):
         path = Path(row["path"])
@@ -85,6 +91,9 @@ def write_sidecars(store: Store, library_id: int, only_raw: bool = True,
             continue
         rating, label = _rating(row)
         sidecar = path.with_suffix(path.suffix + ".xmp")
+        if not overwrite and sidecar.exists():
+            result.skipped += 1
+            continue
         try:
             sidecar.write_text(
                 XMP_TEMPLATE.format(rating=rating, label=escape(label)),

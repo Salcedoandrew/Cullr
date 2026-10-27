@@ -12,9 +12,9 @@ from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
-APP_NAME = "Sharpen"
+APP_NAME = "Cullr"
 ROOT = Path(SPECPATH).resolve().parent  # noqa: F821 - SPECPATH is provided by PyInstaller
-VERSION = os.environ.get("SHARPEN_VERSION", "0.1.0")
+VERSION = os.environ.get("CULLR_VERSION", "0.2.0")
 
 datas = [
     (str(ROOT / "frontend" / "dist"), "frontend/dist"),
@@ -46,7 +46,7 @@ except Exception as exc:  # pragma: no cover - only breaks a packaging run
     raise SystemExit(f"mediapipe could not be collected for packaging: {exc}")
 
 analysis = Analysis(  # noqa: F821
-    [str(ROOT / "desktop" / "sharpen_desktop.py")],
+    [str(ROOT / "desktop" / "cullr_desktop.py")],
     pathex=[str(ROOT / "backend")],
     binaries=binaries,
     datas=datas,
@@ -73,7 +73,7 @@ exe = EXE(  # noqa: F821
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    icon=str(ROOT / "assets" / "Sharpen.icns"),
+    icon=str(ROOT / "assets" / "Cullr.icns"),
 )
 
 collection = COLLECT(  # noqa: F821
@@ -88,8 +88,8 @@ collection = COLLECT(  # noqa: F821
 app = BUNDLE(  # noqa: F821
     collection,
     name=f"{APP_NAME}.app",
-    icon=str(ROOT / "assets" / "Sharpen.icns"),
-    bundle_identifier="com.sharpen.culler",
+    icon=str(ROOT / "assets" / "Cullr.icns"),
+    bundle_identifier="com.cullr.app",
     version=VERSION,
     info_plist={
         "CFBundleName": APP_NAME,

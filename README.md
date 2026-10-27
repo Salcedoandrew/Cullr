@@ -1,10 +1,10 @@
 <p align="center">📸</p>
 
-# Sharpen
+# Cullr
 
 ### Local-first AI photo culling for macOS: sharpness, eyes-closed, burst de-duplication and a guaranteed keeper of everyone in the shoot.
 
-[![GitHub release](https://img.shields.io/github/v/release/Salcedoandrew/sharpen)](https://github.com/Salcedoandrew/sharpen/releases/latest) [![Top language](https://img.shields.io/github/languages/top/Salcedoandrew/sharpen)](https://github.com/Salcedoandrew/sharpen) [![Last commit](https://img.shields.io/github/last-commit/Salcedoandrew/sharpen/main)](https://github.com/Salcedoandrew/sharpen/commits/main) [![Release](https://img.shields.io/github/actions/workflow/status/Salcedoandrew/sharpen/release.yml?label=Release)](https://github.com/Salcedoandrew/sharpen/actions/workflows/release.yml) [![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)](https://www.python.org/) [![macOS arm64](https://img.shields.io/badge/macOS-arm64-000000?logo=apple)](https://github.com/Salcedoandrew/sharpen/releases/latest)
+[![GitHub release](https://img.shields.io/github/v/release/Salcedoandrew/cullr)](https://github.com/Salcedoandrew/cullr/releases/latest) [![Top language](https://img.shields.io/github/languages/top/Salcedoandrew/cullr)](https://github.com/Salcedoandrew/cullr) [![Last commit](https://img.shields.io/github/last-commit/Salcedoandrew/cullr/main)](https://github.com/Salcedoandrew/cullr/commits/main) [![Release](https://img.shields.io/github/actions/workflow/status/Salcedoandrew/cullr/release.yml?label=Release)](https://github.com/Salcedoandrew/cullr/actions/workflows/release.yml) [![Python 3.10–3.12](https://img.shields.io/badge/python-3.10%E2%80%933.12-blue)](https://www.python.org/) [![macOS arm64](https://img.shields.io/badge/macOS-arm64-000000?logo=apple)](https://github.com/Salcedoandrew/cullr/releases/latest)
 
 [About](#-about) | [Technologies](#-technologies) | [Get the app](#-get-the-app) | [What it does](#-what-it-does) | [Quick start](#-quick-start) | [How a decision is made](#-how-a-decision-is-made) | [Verified behaviour](#-verified-behaviour) | [Repository layout](#-repository-layout) | [Not in this version](#-not-in-this-version) | [Licence notes](#-licence-notes)
 
@@ -38,13 +38,13 @@ the licensing map, the architecture and the stack rationale — is in
 
 The Mac build is a single `.app` in a drag-to-Applications `.dmg`, published on
 the [releases page](../../releases). Download
-`Sharpen-<version>-arm64.dmg`, open it, and drag **Sharpen** into Applications.
+`Cullr-<version>-arm64.dmg`, open it, and drag **Cullr** into Applications.
 
 It is Apple-silicon only and signed ad-hoc, not notarised: the first launch needs
 right-click → **Open** instead of a double-click. Everything — the UI, the face
 model, the Python runtime — is inside the bundle, so there is nothing else to
 install. Catalog, preview cache and logs live in
-`~/Library/Application Support/Sharpen`, and the app serves itself on a loopback
+`~/Library/Application Support/Cullr`, and the app serves itself on a loopback
 port that closes with the window.
 
 ## ✨ What it does
@@ -76,10 +76,14 @@ port that closes with the window.
 * **Review** — keyboard-first contact sheet grouped by burst, loupe with face
   boxes and every measured value, per-frame overrides.
 * **Export** — XMP sidecars with `xmp:Rating`/`xmp:Label` (originals untouched),
-  a keeper copy, or a CSV report. Destinations are chosen in a folder browser
-  (`/api/folders`) that can create the delivery folder, and each shoot remembers
-  the mode and folder of its last export (stored in the catalog, so it follows
-  the shoot rather than the browser).
+  a keeper copy, or a CSV report. The destination is chosen in a Finder-style
+  panel: places sidebar (recents, favourites, network shares, volumes), an
+  icon or list browser with real thumbnails, item counts and image dimensions, a
+  breadcrumb menu, search, and New Folder — styled with the system's materials
+  rather than the app's palette. Each shoot remembers the mode and folder of its
+  last export (stored in the catalog, so it follows the shoot rather than the
+  browser). "Overwrite ratings in XMP files" decides whether an existing sidecar
+  is replaced or left exactly as the photographer rated it.
 
 ## 🚀 Quick start
 
@@ -118,13 +122,13 @@ cd frontend && npm run dev                           # terminal 2 → :5173 (pro
 
 ```bash
 uv pip install --python .venv/bin/python -e "backend[desktop]"
-.venv/bin/python desktop/sharpen_desktop.py          # native window over the local server
+.venv/bin/python desktop/cullr_desktop.py          # native window over the local server
 ```
 
 `desktop/build_macos.sh` does the whole package: builds the UI, draws the icon
-(`desktop/make_icon.py`), freezes `Sharpen.app` with PyInstaller, smoke-tests the
+(`desktop/make_icon.py`), freezes `Cullr.app` with PyInstaller, smoke-tests the
 frozen service (it must answer `/api/capabilities` with faces enabled), signs it
-ad-hoc and writes `dist/Sharpen-<version>-arm64.dmg`. A `v*` tag runs the same
+ad-hoc and writes `dist/Cullr-<version>-arm64.dmg`. A `v*` tag runs the same
 script on a macOS runner (see [`.github/workflows/release.yml`](.github/workflows/release.yml))
 and attaches the `.dmg` plus `SHA256SUMS` to the release.
 
@@ -157,8 +161,19 @@ the gates:
 
 Raising strictness raises the face-blur gate, tightens the relative-blur ratio and
 lowers the eyes-open cutoff. Every rejection stores a reason (`blurry`,
-`overexposed`, `underexposed`, `closed_eyes`, `duplicate`, `unreadable`) that the
-UI shows — the point of auto-culling is that you can audit it.
+`overexposed`, `underexposed`, `closed_eyes`, `duplicate`, `target`,
+`unreadable`) that the UI shows — the point of auto-culling is that you can audit
+it.
+
+**Cull to target (beta)** — the pre-cull window asks one of two questions. *Auto
+Target* asks "is this frame acceptable", and the gates above answer it. *Cull to
+Target* asks "how many frames do I want": keepers are ranked by composite
+quality and cut at the target percentage, and the frames that lose are rejected
+as `Over target` rather than silently dropped. Coverage still wins — a frame that
+is someone's only keeper is never cut to hit a number — so a 14 % target on 5,745
+frames can land slightly above 804. The tradeoff is stated in the window: below
+the target count a group may keep nothing, which is exactly what a tighter edit
+means.
 
 **Groups** — a pair is a candidate when either (a) pHash is within 6 bits (≈90 %
 similar, facet's default), or (b) the capture times are within 2 s and hashes are
@@ -192,7 +207,7 @@ have already curated.
 
 ## ✅ Verified behaviour
 
-`cd backend && ../.venv/bin/python -m pytest` — **108 tests**, covering the
+`cd backend && ../.venv/bin/python -m pytest` — **113 tests**, covering the
 metrics, gates, grouping, selection, identity clustering, coverage and the
 confirmable-merge rules, export formats, the HTTP API, and full
 scan-then-review-then-export runs on generated shoots.
@@ -263,4 +278,4 @@ deliberately absent. Details and the full model table are in
 
 Made with ❤️ by [Andrew Salcedo](https://github.com/Salcedoandrew)
 
-[Back to top](#sharpen)
+[Back to top](#cullr)

@@ -33,7 +33,7 @@ export function Import({ libraries, capabilities, error, onOpen, onSelect }: Pro
           <span>without opening every frame.</span>
         </h1>
         <p>
-          Sharpen scores each photo for focus, exposure and open eyes, groups the
+          Cullr scores each photo for focus, exposure and open eyes, groups the
           near-identical frames from a burst, and picks the one worth keeping. You
           review the result, override anything, and export ratings as sidecars.
         </p>

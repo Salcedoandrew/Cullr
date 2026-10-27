@@ -92,12 +92,36 @@ export interface MergeSuggestion {
   similarity: number;
 }
 
+export interface FolderEntry {
+  name: string;
+  path: string;
+  kind: "folder" | "image" | "file";
+  /** Folders only: how many visible children, when it could be counted. */
+  items?: number | null;
+  writable?: boolean;
+  size?: number | null;
+  width?: number;
+  height?: number;
+}
+
+export interface FolderShortcut {
+  name: string;
+  path: string;
+}
+
 export interface FolderListing {
   path: string;
   parent: string | null;
   home: string;
   writable: boolean;
+  /** Directories only — kept for callers that just want sub-folders. */
   folders: { name: string; path: string }[];
+  entries: FolderEntry[];
+  sidebar: {
+    favorites: FolderShortcut[];
+    shared: FolderShortcut[];
+    locations: FolderShortcut[];
+  };
   truncated: boolean;
 }
 
@@ -122,6 +146,10 @@ export interface Settings {
   detect_blinks: boolean;
   group_duplicates: boolean;
   person_coverage: boolean;
+  /** "Cull to target" fraction (0..1); null means the quality gates decide. */
+  target_ratio: number | null;
+  /** Export: replace an existing <file>.xmp rather than leaving it alone. */
+  overwrite_xmp: boolean;
 }
 
 export interface Preset {

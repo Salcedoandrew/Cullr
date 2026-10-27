@@ -4,7 +4,7 @@ The app is a FastAPI service plus a compiled React UI. On the desktop it runs as
 a normal Mac application: a WKWebView window (via pywebview, which drives the
 system WebKit rather than bundling a browser) pointed at a loopback server this
 process owns. Closing the window stops the server; the catalog and preview cache
-live in ``~/Library/Application Support/Sharpen`` so the bundle itself can stay
+live in ``~/Library/Application Support/Cullr`` so the bundle itself can stay
 read-only and signed.
 
 Startup is not instant — importing MediaPipe costs a few seconds — so the window
@@ -12,7 +12,7 @@ opens immediately with a splash and swaps to the app once the service answers.
 
 No data leaves the machine: the server binds to 127.0.0.1 on an ephemeral port.
 
-Run from source with ``python desktop/sharpen_desktop.py``; ``--server-only``
+Run from source with ``python desktop/cullr_desktop.py``; ``--server-only``
 starts just the service (used by the packaging smoke test, where CI has no
 window server).
 """
@@ -30,10 +30,10 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-APP_NAME = "Sharpen"
+APP_NAME = "Cullr"
 READY_TIMEOUT = 120.0
 SPLASH_HTML = """<!doctype html>
-<html><head><meta charset="utf-8"><title>Sharpen</title>
+<html><head><meta charset="utf-8"><title>Cullr</title>
 <style>
   html, body { height: 100%; margin: 0; background: #14110d; color: #ece2d2;
                font-family: -apple-system, "Avenir Next", "Segoe UI", sans-serif;
@@ -46,7 +46,7 @@ SPLASH_HTML = """<!doctype html>
   p { margin: 0; font-size: 12.5px; letter-spacing: 0.02em; color: #7c7264; }
   @keyframes slide { from { transform: translateX(-110%); } to { transform: translateX(300%); } }
 </style></head>
-<body><div class="mark"><h1>Sharpen</h1>
+<body><div class="mark"><h1>Cullr</h1>
 <div class="bar"><span></span></div><p>Starting the local service…</p></div></body></html>"""
 
 
@@ -82,7 +82,7 @@ def _wait_until_ready(base_url: str, timeout: float = READY_TIMEOUT) -> bool:
 def _configure_logging(data_dir: Path) -> Path:
     log_dir = data_dir / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_path = log_dir / "sharpen.log"
+    log_path = log_dir / "cullr.log"
     handler = logging.FileHandler(log_path, encoding="utf-8")
     handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
     root = logging.getLogger()
@@ -101,7 +101,7 @@ def _start_service(data_dir: Path, port: int):
     application = create_app(data_dir)
     server = uvicorn.Server(uvicorn.Config(application, host="127.0.0.1", port=port,
                                            log_level="warning", access_log=False))
-    thread = threading.Thread(target=server.run, name="sharpen-server", daemon=True)
+    thread = threading.Thread(target=server.run, name="cullr-server", daemon=True)
     thread.start()
     return server, thread
 
@@ -124,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     # only the first run pays for it.
     os.environ.setdefault("MPLCONFIGDIR", str(data_dir / "matplotlib"))
     log_path = _configure_logging(data_dir)
-    log = logging.getLogger("sharpen")
+    log = logging.getLogger("cullr")
 
     port = args.port or _free_port()
     base_url = f"http://127.0.0.1:{port}"
@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             window.load_html(message)
 
-    threading.Thread(target=boot, name="sharpen-boot", daemon=True).start()
+    threading.Thread(target=boot, name="cullr-boot", daemon=True).start()
     try:
         webview.start()
     finally:

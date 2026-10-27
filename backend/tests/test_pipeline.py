@@ -91,6 +91,38 @@ def test_keep_min_per_group_is_respected(store, photo_dir):
     assert all(count <= 2 for count in keepers_per_group.values())
 
 
+def test_target_ratio_caps_keepers_and_says_why(store, photo_dir):
+    library_id, _ = scan(store, photo_dir)
+    before = {r["id"] for r in store.photos(library_id) if r["verdict"] == "keep"}
+    assert len(before) > 1, "the cap needs more than one keeper to bite"
+
+    # 6 frames at 17% => 1 keeper, so a quality-ranked cap is the only way.
+    _library_id, result = scan(store, photo_dir,
+                               CullingSettings(preset="wedding", target_ratio=0.17))
+    rows = store.photos(library_id)
+    kept = [r for r in rows if r["verdict"] == "keep"]
+    dropped = [r for r in rows if r["reason"] == "target"]
+
+    assert len(kept) == 1, kept
+    assert result.keepers == 1
+    # The cap ranks by measured quality: the survivor is the best frame.
+    assert kept[0]["quality"] == max(r["quality"] for r in rows)
+    # Only frames that were keepers can lose to the target, and nothing else is
+    # relabelled: a soft frame stays "blurry", it does not become "target".
+    assert {r["id"] for r in dropped} == before - {kept[0]["id"]}
+    assert all(r["verdict"] == "reject" for r in dropped)
+
+
+def test_target_above_actual_keepers_changes_nothing(store, photo_dir):
+    base_id, base = scan(store, photo_dir)
+    baseline = {r["id"] for r in store.photos(base_id) if r["verdict"] == "keep"}
+
+    generous_id, _ = scan(store, photo_dir, CullingSettings(preset="wedding", target_ratio=1.0))
+    still_kept = {r["id"] for r in store.photos(generous_id) if r["verdict"] == "keep"}
+    assert still_kept == baseline
+    assert base.keepers == len(baseline)
+
+
 def test_unreadable_file_is_recorded_not_fatal(store, photo_dir, tmp_path):
     broken = photo_dir / "IMG_9999.jpg"
     broken.write_bytes(b"not a jpeg at all")
