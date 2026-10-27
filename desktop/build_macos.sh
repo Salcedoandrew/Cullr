@@ -11,7 +11,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 APP_NAME="Cullr"
-VERSION="${CULLR_VERSION:-0.4.0}"
+VERSION="${CULLR_VERSION:-0.5.0}"
 PYTHON="${PYTHON:-$ROOT/.venv/bin/python}"
 ARCH="$(uname -m)"
 DMG="$ROOT/dist/${APP_NAME}-${VERSION}-${ARCH}.dmg"

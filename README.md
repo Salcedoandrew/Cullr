@@ -99,6 +99,11 @@ port that closes with the window.
 * **Best of group** — quality with *bounded* tie-breaks for open eyes, face
   sharpness and expression, so a blink fixes a near-tie but never rescues a bad
   frame. Every group keeps at least one frame.
+* **Sharper ranking inside a group** — subject-region sharpness measured on the
+  centre of the frame when no face can carry it (rings, the dress, the venue), a
+  penalty for a two-peak blown-sky / crushed-shadow histogram, and colour
+  variety as a near-tie tie-break. All three are rankers: none of them adds a
+  rejection reason.
 * **Every rejection is explained** — `blurry`, `overexposed`, `underexposed`,
   `closed_eyes`, `duplicate`, `target` or `unreadable`, stored with the frame and
   shown in the UI. The point of auto-culling is that you can audit it.
