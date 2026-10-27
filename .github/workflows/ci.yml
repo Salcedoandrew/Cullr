@@ -1,0 +1,64 @@
+name: CI
+
+# Fast checks on ordinary pushes and pull requests. The tag-driven Release
+# workflow builds the .dmg and runs the same tests again; this one exists so a
+# broken README block or a failing test is visible before anyone tags.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  notes:
+    # The release body is rendered from the README's marked blocks, so a lost
+    # marker would only surface at tag time. This job is one script run and no
+    # installs, so it costs a few seconds.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check release-note source
+        run: python scripts/release_notes.py --check
+
+      # Renders the body the way a release would, so a broken link or an empty
+      # section shows up in the log rather than on the release page.
+      - name: Render the notes
+        run: python scripts/release_notes.py --version 0.0.0 --tag v0.0.0 --repo "$GITHUB_REPOSITORY" --out /tmp/NOTES.md
+
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+
+      # No [faces] extra: MediaPipe only ships desktop wheels and the
+      # model-dependent tests skip themselves when it is absent. The macOS
+      # release job installs it and exercises the frozen bundle.
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "backend[dev]"
+
+      - name: Tests
+        run: python -m pytest -q backend
