@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from culler.config import CullingSettings
+from culler.config import RATING_CATEGORIES, CullingSettings, default_rating_scheme
 from culler.db import Store
 from culler.export import copy_keepers, write_csv, write_sidecars
 from culler.pipeline import run_scan
@@ -93,3 +93,57 @@ def test_csv_report_matches_photo_count(library, tmp_path):
     assert result.written == 6
     assert len(lines) == 7  # header + 6 photos
     assert lines[0].startswith("filename,path,decision,decided_by,reason")
+
+
+def test_a_custom_scheme_is_written_to_the_sidecar(library):
+    store, library_id, folder = library
+    keeper = next(r for r in store.photos(library_id) if r["verdict"] == "keep")
+    scheme = default_rating_scheme()
+    scheme["selected"] = {"stars": 2, "color": "Blue"}
+
+    write_sidecars(store, library_id, only_raw=False, scheme=scheme)
+
+    text = (folder / f"{keeper['filename']}.xmp").read_text()
+    assert 'xmp:Rating="2"' in text
+    assert 'xmp:Label="Blue"' in text
+
+
+def test_each_reject_reason_reads_its_own_row(library):
+    store, library_id, folder = library
+    scheme = default_rating_scheme()
+    scheme["duplicate"] = {"stars": 0, "color": "Yellow"}
+    scheme["blurry"] = {"stars": 3, "color": "Purple"}
+
+    write_sidecars(store, library_id, only_raw=False, scheme=scheme)
+
+    rows = {r["filename"]: r for r in store.photos(library_id)}
+    duplicate = next(r for r in rows.values() if r["reason"] == "duplicate")
+    assert 'xmp:Label="Yellow"' in (folder / f"{duplicate['filename']}.xmp").read_text()
+
+    blurred = rows["IMG_0102.jpg"]       # the deliberately soft burst frame
+    assert blurred["reason"] == "blurry"
+    blurred_text = (folder / "IMG_0102.jpg.xmp").read_text()
+    assert 'xmp:Rating="3"' in blurred_text
+    assert 'xmp:Label="Purple"' in blurred_text
+
+
+def test_a_chosen_star_still_wins_over_the_scheme(library):
+    store, library_id, folder = library
+    keeper = next(r for r in store.photos(library_id) if r["verdict"] == "keep")
+    store.set_user_decision(keeper["id"], "pick", star=5)
+    scheme = default_rating_scheme()
+    scheme["selected"] = {"stars": 2, "color": "Blue"}
+
+    write_sidecars(store, library_id, only_raw=False, scheme=scheme)
+
+    text = (folder / f"{keeper['filename']}.xmp").read_text()
+    assert 'xmp:Rating="5"' in text
+    assert 'xmp:Label="Blue"' in text
+
+
+def test_the_untouched_scheme_is_the_old_hardcoded_pair():
+    """The default is not a new default: it is exactly what shipped before."""
+    scheme = CullingSettings().rating_scheme
+    assert scheme["selected"] == {"stars": 1, "color": "Green"}
+    for key in ("highlights", "blurry", "closed_eyes", "duplicate", "unrated"):
+        assert scheme[key] == {"stars": -1, "color": "Red"}

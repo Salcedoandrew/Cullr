@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from culler.config import CullingSettings, strictness_stops
+from culler.config import (
+    RATING_CATEGORIES, CullingSettings, strictness_stops,
+)
 from culler.metrics.faces import Face, FaceMetrics
 from culler.metrics.technical import TechnicalMetrics
 from culler.scoring import composite, exposure_axis, score_photo, technical_reason
@@ -294,3 +296,19 @@ def test_unreadable_photo_never_becomes_a_keeper():
     settings = CullingSettings()
     result = score_photo(tech(sharp=0.0), face_metrics(), settings)
     assert result.verdict == "reject"
+
+
+def test_a_stored_rating_scheme_is_clamped_to_what_xmp_can_express():
+    settings = CullingSettings(rating_scheme={
+        "selected": {"stars": 99, "color": "Chartreuse"},
+        "blurry": {"stars": 3, "color": "Orange"},
+        "duplicate": {"stars": "2", "color": "Blue"},
+    })
+    assert settings.rating_scheme["selected"] == {"stars": 1, "color": "Green"}
+    # Orange is not a Lightroom label; the star is kept, the colour falls back.
+    assert settings.rating_scheme["blurry"] == {"stars": 3, "color": "Red"}
+    assert settings.rating_scheme["duplicate"] == {"stars": 2, "color": "Blue"}
+    assert set(settings.rating_scheme) == set(RATING_CATEGORIES)
+    # And it survives the JSON round-trip a stored library makes.
+    restored = CullingSettings.from_dict(settings.to_dict())
+    assert restored.rating_scheme == settings.rating_scheme

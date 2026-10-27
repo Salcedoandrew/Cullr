@@ -174,6 +174,8 @@ export interface Settings {
   target_ratio: number | null;
   /** Export: replace an existing <file>.xmp rather than leaving it alone. */
   overwrite_xmp: boolean;
+  /** Export: the star/colour each outcome is written with. */
+  rating_scheme: RatingScheme;
   /** Import: walk sub-folders, and which photo types count. */
   recursive: boolean;
   import_types: string[];
@@ -188,6 +190,18 @@ export interface Preset {
   description: string;
   strictness: number;
 }
+
+/** The six rows of the Stars & Colors panel, matching config.py. */
+export type RatingCategory =
+  | "selected" | "highlights" | "blurry" | "closed_eyes" | "duplicate" | "unrated";
+
+/** One row: a star value (-1 is XMP's rejected) and a Lightroom colour label. */
+export interface RatingEntry {
+  stars: number;
+  color: string;
+}
+
+export type RatingScheme = Record<RatingCategory, RatingEntry>;
 
 /** One stop on the Auto Target "Set selection strictness" scale. */
 export interface StrictnessStop {

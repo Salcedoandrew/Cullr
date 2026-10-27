@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api";
-import type { Capabilities, SemanticStatus, Settings, Stats } from "../types";
+import type {
+  Capabilities, RatingCategory, RatingScheme, SemanticStatus, Settings, Stats,
+} from "../types";
 
 /**
  * The pre-cull window: what kind of shoot this is, how many frames to keep, and
@@ -32,6 +34,37 @@ interface Props {
 const MIN_PERCENT = 10;
 const MAX_PERCENT = 60;
 const DEFAULT_RATIO = 0.2;
+
+/** The Stars & Colors rows, in the order the panel shows them. */
+const RATING_ROWS: { key: RatingCategory; label: string }[] = [
+  { key: "selected", label: "Selected" },
+  { key: "highlights", label: "Highlights" },
+  { key: "blurry", label: "Blurred" },
+  { key: "closed_eyes", label: "Closed Eyes" },
+  { key: "duplicate", label: "Duplicates" },
+  { key: "unrated", label: "Unrated" },
+];
+const STAR_CHOICES = [-1, 0, 1, 2, 3, 4, 5];
+// Lightroom's five colour labels (what other tools actually display), plus the
+// option to write no label at all. "Orange", for instance, is not one of them.
+const LABEL_CHOICES = ["Red", "Yellow", "Green", "Blue", "Purple", ""];
+
+const starLabel = (stars: number): string =>
+  stars < 0 ? "✗" : stars === 0 ? "unrated" : `★${stars}`;
+
+/** One line under the main row, derived from whatever scheme is saved. */
+function schemeSummary(scheme: RatingScheme): string {
+  const selected = scheme.selected;
+  const rejects = RATING_ROWS.filter((row) => row.key !== "selected")
+    .map((row) => scheme[row.key]);
+  const sameStars = new Set(rejects.map((entry) => entry.stars)).size === 1;
+  const sameColor = new Set(rejects.map((entry) => entry.color)).size === 1;
+  const reject = sameStars && sameColor
+    ? `${starLabel(rejects[0].stars)} · ${rejects[0].color || "No label"}`
+    : "their own rows";
+  return `Keepers get ${starLabel(selected.stars)} · ${selected.color || "No label"}, `
+    + `rejects ${reject}, written as XMP sidecars.`;
+}
 
 function Chevron({ direction = "right" }: { direction?: "left" | "right" | "down" }) {
   const rotation = direction === "left" ? 180 : direction === "down" ? 90 : 0;
@@ -137,6 +170,14 @@ export function CullDialog({
   const [semantic, setSemantic] = useState<SemanticStatus | null>(null);
   const [semanticError, setSemanticError] = useState<string | null>(null);
   const downloading = semantic?.downloading ?? false;
+  // The dialog has two panels: the cull itself, and the drill-in ratings
+  // editor. The back chevron walks out of the second, closes from the first.
+  const [view, setView] = useState<"main" | "ratings">("main");
+  const [scheme, setScheme] = useState<RatingScheme>(
+    settings.rating_scheme ?? capabilities.default_settings.rating_scheme,
+  );
+  const [reExport, setReExport] = useState(false);
+  const goBack = () => (view === "ratings" ? setView("main") : onClose());
   const dialog = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -148,11 +189,13 @@ export function CullDialog({
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.stopPropagation();
-      onClose();
+      // Escape walks back out of the ratings panel before closing the dialog.
+      if (view === "ratings") setView("main");
+      else onClose();
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  }, [onClose, view]);
 
   const percent = Math.round(ratio * 100);
   const count = total > 0 ? Math.max(1, Math.round(ratio * total)) : 0;
@@ -251,10 +294,10 @@ export function CullDialog({
         tabIndex={-1}
       >
         <header className="cull__head">
-          <button type="button" className="cull__close" onClick={onClose} aria-label="Back">
+          <button type="button" className="cull__close" onClick={goBack} aria-label="Back">
             <Chevron direction="left" />
           </button>
-          <h2>AI Automated Cull</h2>
+          <h2>{view === "ratings" ? "Set Star/Color Ratings" : "AI Automated Cull"}</h2>
           <button type="button" className="cull__close" onClick={onClose} aria-label="Close">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                  strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
@@ -264,6 +307,80 @@ export function CullDialog({
         </header>
 
         <div className="cull__scroll">
+        {view === "ratings" ? (
+          <>
+            <p className="cull__ratings-intro">
+              Every outcome writes one XMP rating and colour label. A star you
+              pick by hand still wins over the row below.
+            </p>
+            <div className="cull__ratings">
+              {RATING_ROWS.map(({ key, label }) => (
+                <div className="cull__rating-row" key={key}>
+                  <span className="cull__rating-name">{label}</span>
+                  <select
+                    className="cull__rating-select cull__rating-select--stars"
+                    aria-label={`${label} stars`}
+                    value={scheme[key].stars}
+                    onChange={(event) => setScheme({
+                      ...scheme,
+                      [key]: { ...scheme[key], stars: Number(event.target.value) },
+                    })}
+                  >
+                    {STAR_CHOICES.map((stars) => (
+                      <option key={stars} value={stars}>
+                        {stars < 0 ? "✗ Rejected" : stars === 0 ? "0 stars" : `★${stars}`}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    className="cull__rating-select"
+                    aria-label={`${label} colour`}
+                    value={scheme[key].color}
+                    onChange={(event) => setScheme({
+                      ...scheme,
+                      [key]: { ...scheme[key], color: event.target.value },
+                    })}
+                  >
+                    {LABEL_CHOICES.map((color) => (
+                      <option key={color || "none"} value={color}>
+                        {color || "No label"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <label className="cull__check">
+              <input
+                type="checkbox"
+                checked={reExport}
+                onChange={(event) => setReExport(event.target.checked)}
+              />
+              <span>Re-export the shoot to apply rating preferences</span>
+            </label>
+            <div className="cull__foot cull__foot--panel">
+              <button
+                type="button"
+                className="cull__quiet"
+                onClick={() => setScheme(capabilities.default_settings.rating_scheme)}
+              >
+                Restore defaults
+              </button>
+              <button
+                type="button"
+                className="cull__start"
+                onClick={() => {
+                  onChange({ ...settings, rating_scheme: scheme });
+                  setView("main");
+                  if (reExport) onOpenExport();
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </>
+        ) : (
+        <>
         {/* The shoot type is the profile the gates are tuned for. */}
         <div className="cull__shoot">
           <select
@@ -525,16 +642,24 @@ export function CullDialog({
           <div>
             <p className="cull__row-label">Stars &amp; Colors Rating</p>
             <p className="cull__row-sub">
-              Keepers get ★1 · Green, rejects ✗ · Red, written as XMP sidecars.
+              {schemeSummary(settings.rating_scheme ?? capabilities.default_settings.rating_scheme)}
             </p>
           </div>
-          <button type="button" className="cull__row-action" onClick={onOpenExport}>
+          <button
+            type="button"
+            className="cull__row-action"
+            onClick={() => setView("ratings")}
+            aria-label="Edit star and colour ratings"
+          >
             Update
             <Chevron />
           </button>
         </div>
+        </>
+        )}
         </div>
 
+        {view === "main" && (
         <div className="cull__foot">
           <label className="cull__check">
             <input
@@ -555,6 +680,7 @@ export function CullDialog({
             {busy ? "Culling…" : downloading ? "Downloading model…" : "Start Cull"}
           </button>
         </div>
+        )}
       </div>
     </div>
   );

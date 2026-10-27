@@ -152,8 +152,15 @@ def cmd_export(args) -> int:
     root = Path(args.folder).expanduser().resolve()
     store = _store(args)
     library = store.create_or_get_library(str(root))
+    # The star/colour scheme travels with the library, so a headless export
+    # writes the same sidecars the dialog would.
+    try:
+        settings = CullingSettings.from_dict(json.loads(library.get("settings_json") or "{}"))
+    except (TypeError, ValueError):
+        settings = CullingSettings()
     if args.mode == "sidecar":
-        result = export.write_sidecars(store, library["id"], only_raw=not args.all_files)
+        result = export.write_sidecars(store, library["id"], only_raw=not args.all_files,
+                                       scheme=settings.rating_scheme)
     elif args.mode == "copy":
         result = export.copy_keepers(store, library["id"], args.dest)
     else:

@@ -2611,6 +2611,76 @@ kbd {
   color: #8e8e93;
 }
 
+/* The drill-in ratings editor: one row per outcome, star and colour. */
+
+.cull__ratings-intro {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #8e8e93;
+}
+
+.cull__ratings {
+  display: grid;
+  gap: 2px;
+  margin-top: 14px;
+}
+
+.cull__rating-row {
+  display: grid;
+  grid-template-columns: 1fr 118px 112px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 2px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cull__rating-name {
+  font-size: 14.5px;
+  color: #f2f2f4;
+}
+
+.cull__rating-select {
+  height: 34px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: #2c2c2e;
+  color: #f2f2f4;
+  font-size: 13.5px;
+}
+
+.cull__rating-select:focus-visible {
+  outline: 2px solid #0a84ff;
+  outline-offset: 1px;
+}
+
+.cull__rating-select--stars {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The ratings panel's own actions live inside the scroll area. */
+
+.cull__foot--panel {
+  margin-top: 14px;
+  padding: 12px 0 4px;
+  background: transparent;
+}
+
+.cull__quiet {
+  padding: 8px 2px;
+  border: 0;
+  background: transparent;
+  color: #8e8e93;
+  font-size: 13.5px;
+  cursor: default;
+}
+
+.cull__quiet:hover:not(:disabled) {
+  color: #c7c7cc;
+  text-decoration: underline;
+}
+
 .cull__row-action {
   display: flex;
   align-items: center;

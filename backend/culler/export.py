@@ -8,6 +8,12 @@ written next to the file.
 * reject -> ``xmp:Rating="-1"`` (the XMP "rejected" value) and ``xmp:Label="Red"``
 * star overrides the rating when the photographer set one
 
+Those two lines are the *default* scheme. The real star/colour for each
+outcome lives in ``CullingSettings.rating_scheme`` (selected, highlights,
+blurry, closed eyes, duplicates, everything else), which the dialog's Stars &
+Colors panel edits; ``_rating`` reads it and falls back to the default pair, so
+an untouched shoot writes exactly what it always did.
+
 The sidecar path is ``<filename>.xmp``, which is what Lightroom Classic and
 Capture One expect for RAW files. For JPEG/TIFF, an external sidecar is only
 read when the application is configured to use one, so ``mode="sidecar_all"``
@@ -22,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from xml.sax.saxutils import escape
 
-from .config import RAW_EXTENSIONS
+from .config import RATING_REASONS, RAW_EXTENSIONS, default_rating_scheme
 from .db import Store
 
 XMP_TEMPLATE = """<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
@@ -60,16 +66,30 @@ def _effective(row: dict) -> str:
     return "keep" if raw in ("keep", "pick") else "reject"
 
 
-def _rating(row: dict) -> tuple[int, str]:
-    decision = _effective(row)
+def rating_category(row: dict) -> str:
+    """Which editable scheme row this frame belongs to.
+
+    Rejections map by reason, so a blown highlight can be ★2 Blue while a soft
+    frame stays ✗ Red. Anything without its own row -- underexposed, a
+    cull-to-target drop, an unreadable file -- lands in ``unrated``.
+    """
+    if _effective(row) == "keep":
+        return "selected"
+    return RATING_REASONS.get(row.get("reason") or "", "unrated")
+
+
+def _rating(row: dict, scheme: dict | None = None) -> tuple[int, str]:
+    scheme = scheme or default_rating_scheme()
+    entry = scheme.get(rating_category(row)) or scheme["unrated"]
     star = int(row.get("star") or 0)
-    if decision == "keep":
-        return (star if star > 0 else 1), "Green"
-    return -1, "Red"
+    if _effective(row) == "keep" and star > 0:
+        return star, entry["color"]
+    return int(entry["stars"]), entry["color"]
 
 
 def write_sidecars(store: Store, library_id: int, only_raw: bool = True,
-                   include_rejects: bool = True, overwrite: bool = True) -> ExportResult:
+                   include_rejects: bool = True, overwrite: bool = True,
+                   scheme: dict | None = None) -> ExportResult:
     """Write one sidecar per frame.
 
     ``overwrite=False`` leaves an existing sidecar alone: a photographer who has
@@ -89,7 +109,7 @@ def write_sidecars(store: Store, library_id: int, only_raw: bool = True,
         if only_raw and path.suffix.lower() not in RAW_EXTENSIONS:
             result.skipped += 1
             continue
-        rating, label = _rating(row)
+        rating, label = _rating(row, scheme)
         sidecar = path.with_suffix(path.suffix + ".xmp")
         if not overwrite and sidecar.exists():
             result.skipped += 1

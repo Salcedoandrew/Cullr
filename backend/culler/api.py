@@ -790,11 +790,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         if body.mode == "sidecar":
             result = export_mod.write_sidecars(
                 store, library_id, only_raw=True, include_rejects=body.include_rejects,
-                overwrite=settings.overwrite_xmp)
+                overwrite=settings.overwrite_xmp, scheme=settings.rating_scheme)
         elif body.mode == "sidecar_all":
             result = export_mod.write_sidecars(
                 store, library_id, only_raw=False, include_rejects=body.include_rejects,
-                overwrite=settings.overwrite_xmp)
+                overwrite=settings.overwrite_xmp, scheme=settings.rating_scheme)
         elif body.mode == "copy":
             if not body.dest:
                 raise HTTPException(400, "dest is required for copy export")

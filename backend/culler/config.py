@@ -199,6 +199,57 @@ def strictness_stops() -> list[dict[str, Any]]:
             for key, label, value in SELECTION_STOPS]
 
 
+# ---- The XMP rating scheme ------------------------------------------------ #
+# One editable row per outcome, as in Aftershoot's "Set Star/Color Ratings"
+# panel. The defaults reproduce Cullr's old hardcoded pair exactly -- keepers
+# ★1 Green, everything rejected -1 Red -- so an untouched shoot exports the
+# same sidecar it did before the scheme existed.
+RATING_CATEGORIES = ("selected", "highlights", "blurry", "closed_eyes",
+                     "duplicate", "unrated")
+# Lightroom's five colour labels, plus "" for no label at all. Star -1 is XMP's
+# own "rejected" value; 0 is unrated.
+XMP_LABELS = ("Red", "Yellow", "Green", "Blue", "Purple", "")
+RATING_REASONS = {"overexposed": "highlights", "blurry": "blurry",
+                  "closed_eyes": "closed_eyes", "duplicate": "duplicate"}
+
+
+def default_rating_scheme() -> dict[str, dict[str, Any]]:
+    return {
+        "selected": {"stars": 1, "color": "Green"},
+        "highlights": {"stars": -1, "color": "Red"},
+        "blurry": {"stars": -1, "color": "Red"},
+        "closed_eyes": {"stars": -1, "color": "Red"},
+        "duplicate": {"stars": -1, "color": "Red"},
+        "unrated": {"stars": -1, "color": "Red"},
+    }
+
+
+def normalise_rating_scheme(raw: Any) -> dict[str, dict[str, Any]]:
+    """Clamp a stored scheme back to what XMP can express.
+
+    A hand-edited settings_json (or an older library) must never make export
+    write a star outside -1..5 or a colour Lightroom would not show, so each
+    row is validated and anything unreadable falls back to the default.
+    """
+    scheme = default_rating_scheme()
+    if not isinstance(raw, dict):
+        return scheme
+    for key in RATING_CATEGORIES:
+        entry = raw.get(key)
+        if not isinstance(entry, dict):
+            continue
+        try:
+            stars = int(entry.get("stars", scheme[key]["stars"]))
+        except (TypeError, ValueError):
+            continue
+        color = entry.get("color", scheme[key]["color"])
+        scheme[key] = {
+            "stars": stars if stars in (-1, 0, 1, 2, 3, 4, 5) else scheme[key]["stars"],
+            "color": color if color in XMP_LABELS else scheme[key]["color"],
+        }
+    return scheme
+
+
 def lerp(a: float, b: float, t: float) -> float:
     return a + (b - a) * t
 
@@ -259,6 +310,9 @@ class CullingSettings:
     target_ratio: float | None = None
     # Export: rewrite an existing <file>.xmp instead of leaving it alone.
     overwrite_xmp: bool = True
+    # Export: the star/colour every outcome gets in the sidecar. Editable from
+    # the dialog's Stars & Colors panel; the defaults are the old fixed pair.
+    rating_scheme: dict[str, dict[str, Any]] = field(default_factory=default_rating_scheme)
     # Import (the import screen): which folders to walk and which files count.
     # These travel with the library in settings_json, so a rescan reuses them.
     recursive: bool = True               # include sub-folders
@@ -271,6 +325,7 @@ class CullingSettings:
     backup_dir: str | None = None
 
     def __post_init__(self) -> None:
+        self.rating_scheme = normalise_rating_scheme(self.rating_scheme)
         # settings_json round-trips through JSON, so a tuple arrives as a list.
         # Unknown keys are dropped rather than failing a stored library.
         cleaned: list[str] = []

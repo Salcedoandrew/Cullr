@@ -66,6 +66,14 @@ const settings: Settings = {
   person_coverage: true,
   target_ratio: null,
   overwrite_xmp: true,
+  rating_scheme: {
+    selected: { stars: 1, color: "Green" },
+    highlights: { stars: -1, color: "Red" },
+    blurry: { stars: -1, color: "Red" },
+    closed_eyes: { stars: -1, color: "Red" },
+    duplicate: { stars: -1, color: "Red" },
+    unrated: { stars: -1, color: "Red" },
+  },
   recursive: true,
   import_types: ["raw", "jpeg", "tiff", "heic"],
   ingest: false,
@@ -273,6 +281,37 @@ describe("the Auto Target selection strictness", () => {
     fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
     expect(within(dialog).queryByLabelText("Selection strictness: extreme to more"))
       .toBeNull();
+  });
+});
+
+describe("the Stars & Colors panel", () => {
+  it("edits the scheme in place and the main row reads it back", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+
+    fireEvent.click(within(dialog).getByLabelText("Edit star and colour ratings"));
+    expect(within(dialog).getByText("Set Star/Color Ratings")).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText("Selected stars"),
+                     { target: { value: "2" } });
+    fireEvent.change(within(dialog).getByLabelText("Selected colour"),
+                     { target: { value: "Blue" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    // Back on the cull panel, the row summarises what was saved -- it opens
+    // export, not the editor, so a stale sentence would be misleading.
+    expect(within(dialog).getByText(/Keepers get ★2 · Blue/)).toBeTruthy();
+
+    // The back chevron walks out of the editor and only closes from the panel.
+    fireEvent.click(within(dialog).getByLabelText("Edit star and colour ratings"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back" }));
+    expect(within(dialog).getByText("AI Automated Cull")).toBeTruthy();
   });
 });
 
