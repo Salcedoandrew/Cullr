@@ -49,6 +49,9 @@ port that closes with the window.
 
 ## ✨ What it does
 
+<!-- features:start -->
+### The culling engine
+
 * **Sharpness / blur** — Laplacian variance on a normalised 1600 px frame,
   judged three ways: a frame-wide floor, an absolute *face-crop* gate (the eyes
   must be sharp), and a relative gate inside each burst. Frame-wide Laplacian
@@ -60,30 +63,98 @@ port that closes with the window.
 * **Closed eyes / blinks** — MediaPipe Face Landmarker blendshapes, mapped to a
   0–10 eyes-open score (`(1 − max(eyeBlinkL, eyeBlinkR)) × 10`); the 4.0 cutoff is
   the same one facet measured on real catalogues. Head pose gates the decision so
-  a profile shot is never judged on unreliable eye geometry.
+  a profile shot is never judged on unreliable eye geometry, and a closed-eye
+  frame gets a red face box in the loupe.
 * **Duplicates and bursts** — pHash + dHash with Hamming gates, plus EXIF
   capture-time windows, merged with union-find. Near-duplicates are also found
   across the whole shoot (a re-import with a different timestamp), and groups are
-  chunked so single-linkage cannot chain a whole ceremony into one group.
+  chunked at 24 frames or a bounded time span so single-linkage cannot chain a
+  whole ceremony into one group.
 * **Best of group** — quality with *bounded* tie-breaks for open eyes, face
   sharpness and expression, so a blink fixes a near-tie but never rescues a bad
-  frame. Every group keeps at least one frame, and nothing is auto-rejected
-  without a stated reason.
-* **People** — faces are described from the aligned crop and clustered into
-  people across the folder. Anyone photographed twice gets a keeper even when all
-  of their frames lost to a duplicate or a soft frame: the best one is promoted
-  and the sheet says who it was kept for ("Kept for Person 2 · soft focus").
-* **Review** — keyboard-first contact sheet grouped by burst, loupe with face
-  boxes and every measured value, per-frame overrides.
-* **Export** — XMP sidecars with `xmp:Rating`/`xmp:Label` (originals untouched),
-  a keeper copy, or a CSV report. The destination is chosen in a Finder-style
-  panel: places sidebar (recents, favourites, network shares, volumes), an
-  icon or list browser with real thumbnails, item counts and image dimensions, a
-  breadcrumb menu, search, and New Folder — styled with the system's materials
-  rather than the app's palette. Each shoot remembers the mode and folder of its
-  last export (stored in the catalog, so it follows the shoot rather than the
-  browser). "Overwrite ratings in XMP files" decides whether an existing sidecar
-  is replaced or left exactly as the photographer rated it.
+  frame. Every group keeps at least one frame.
+* **Every rejection is explained** — `blurry`, `overexposed`, `underexposed`,
+  `closed_eyes`, `duplicate`, `target` or `unreadable`, stored with the frame and
+  shown in the UI. The point of auto-culling is that you can audit it.
+* **Presets** — Portrait, Wedding / event, Event / documentary, Sports / action
+  and Landscape / travel, each setting the axis weights, gates and eyes-open
+  cutoff; a 0–100 strictness rescales them for the shoot at hand.
+* **Resumable, idempotent scans** — unchanged files are reused, human decisions
+  survive a rescan, re-analysis is opt-in, and a running scan can be cancelled.
+
+### Culling modes
+
+* **Auto Target** — keeps every frame that passes the quality gates. It answers
+  "is this frame acceptable?".
+* **Cull to Target (beta)** — instead answers "how many frames do I want?". Name
+  a percentage with the 10–60 % slider (live `≈14 % of 5,745 photos` readout) or
+  type the exact count (804); keepers are ranked by composite quality and cut at
+  the target, and the frames that lose are rejected as `Over target` rather than
+  silently dropped.
+* **Coverage beats the number** — a frame that is someone's only keeper is never
+  cut to reach a target, so 14 % of 5,745 can land slightly above 804.
+* **Customize** — strictness, minimum keepers per group, reject closed eyes, group
+  similar shots, keep a frame of everyone, and *re-analyse every frame*.
+* **Stars & Colors rating scheme** — keepers get ★1 · Green, rejects ✗ · Red, and
+  *Overwrite ratings in XMP files* decides whether an existing sidecar is replaced
+  or left exactly as the photographer rated it.
+
+### People and the coverage guarantee
+
+* **Faces are clustered across the shoot** — every face above 40 px becomes a
+  117-float descriptor (a five-point ArcFace alignment, then an 8×8 DCT block for
+  structure plus a 3×3 grid of gradient-orientation histograms for texture, L2
+  normalised) and joins a person at cosine ≥ 0.90.
+* **Nobody is missed** — anyone photographed twice with a face covering ≥ 1.5 %
+  of the frame is *required*: if no keeper contains them, the best frame that does
+  is promoted and the sheet says who it was kept for ("Kept for Person 2 · soft
+  focus"). Promotion never demotes a better frame, and a forced keeper is flagged
+  so the reason stays visible.
+* **Two faces in one frame are never one person** — a hard constraint, so a single
+  photograph can never contain the same person twice.
+* **Merges are proposed, not guessed** — two people at cosine ≥ 0.84 whose frames
+  never overlap are offered as *same person* or *two people*; both answers are
+  stored as face ids and re-applied on every later scan, so a rescan never undoes
+  a curated decision.
+* **Switchable** — turn the guarantee off with *Keep a frame of everyone*.
+
+### Review
+
+* **Contact sheet grouped by burst**, with verdict, reason, stars and the person a
+  frame was kept for on every tile.
+* **Filters with live counts** — All frames, Keepers, Rejected, Duplicates, Soft
+  focus, Eyes closed, Exposure, My picks.
+* **Loupe** — face boxes, every measured value per axis, and per-frame overrides.
+* **Keyboard-first** — `J`/`K` or arrows to move, `Space` to loupe, `G` to the next
+  group, `X` to reject, `P` or `Enter` to pick, `U` to clear, `1`–`5` to star,
+  `Esc` to back out.
+* **Start screen** — the same Finder-style folder picker as export, plus the shoots
+  you have opened before.
+
+### Export
+
+* **XMP sidecars** with `xmp:Rating`/`xmp:Label` (originals untouched), **keeper
+  copies** into a delivery folder, or a **CSV report** of every decision and reason.
+* **Finder-style destination panel** — places sidebar (recents, favourites, network
+  shares, volumes), an icon or list browser with real thumbnails, item counts and
+  image dimensions, a breadcrumb menu, search, and **New Folder**; styled with the
+  system's materials rather than the app's palette.
+* **Remembered per shoot** — each shoot's last export mode and folder are stored in
+  the catalog, so the choice follows the shoot rather than one browser.
+
+### Formats, speed, privacy
+
+* **Formats** — JPEG, PNG, TIFF, WebP and HEIC/HEIF; RAW through `rawpy` or the
+  embedded preview. EXIF capture time, camera, lens, focal length and orientation
+  are read, and rotation is applied before scoring.
+* **Speed** — roughly 4–8 photos/second on an M-series laptop, CPU only (8
+  threads), so a 1,000-frame shoot analyses in a few minutes.
+* **Privacy** — no uploads, no account and no telemetry; after the one-time model
+  download the app makes no network calls.
+* **Headless** — the same engine from a terminal: `culler scan
+  ~/Pictures/shoot --preset wedding --strictness 40`, `culler export
+  ~/Pictures/shoot --mode sidecar|copy|csv`, `culler serve`, `culler fetch-model`.
+<!-- features:end -->
 
 ## 🚀 Quick start
 
@@ -252,6 +323,7 @@ backend/culler/
 frontend/src/      React review UI (contact sheet, loupe, filters, export)
 desktop/           native entry point (WKWebView window), PyInstaller spec,
                    icon generator, .app + .dmg build script
+scripts/           release notes, rendered from this README's feature section
 .github/           tag-driven macOS release workflow
 docs/RESEARCH.md   Aftershoot analysis, repo analysis, licensing, architecture
 NOTICE.md          attribution and model licences
@@ -259,14 +331,16 @@ NOTICE.md          attribution and model licences
 
 ## 🚫 Not in this version
 
+<!-- limits:start -->
 RAW files decode through `rawpy` only if you install `backend[raw]`; otherwise
 the embedded JPEG preview is used when present. Semantic embeddings
 (DINOv2/CLIP), a *learned* face embedder (the permissive options were measured
-and deferred — see [`docs/RESEARCH.md`](docs/RESEARCH.md) §4.6), naming people,
-per-person albums, learned per-photographer ranking, and Lightroom catalogue
-round-trip are deliberately out of scope for the MVP. The desktop bundle is
-Apple silicon only (MediaPipe ships no universal2 wheel) and unsigned, so there
-is no notarised download or auto-update yet.
+and deferred — see [`docs/RESEARCH.md`](https://github.com/Salcedoandrew/cullr/blob/main/docs/RESEARCH.md)
+§4.6), naming people, per-person albums, learned per-photographer ranking, and
+Lightroom catalogue round-trip are deliberately out of scope for the MVP. The
+desktop bundle is Apple silicon only (MediaPipe ships no universal2 wheel) and
+unsigned, so there is no notarised download or auto-update yet.
+<!-- limits:end -->
 
 ## 📄 Licence notes
 

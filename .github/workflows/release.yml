@@ -23,7 +23,10 @@ jobs:
     timeout-minutes: 45
 
     steps:
+      # Full history so the release notes can name the previous tag.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -40,6 +43,11 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
           .venv/bin/python -m pip install -e "backend[dev,faces,desktop]"
+
+      # Fails before the long build if the README's feature block (the source of
+      # the release notes) has lost its markers.
+      - name: Check release-note source
+        run: python scripts/release_notes.py --check
 
       - name: Tests
         run: cd backend && ../.venv/bin/python -m pytest -q
@@ -80,14 +88,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="${{ steps.version.outputs.value }}"
-          # Notes are generated once; a re-run of the same tag only refreshes the
-          # asset, so the release body (and its install caveat) is not lost.
+          # Notes are generated from the README's own feature section, so the
+          # release can never say something the README does not. Generated once;
+          # a re-run of the same tag only refreshes the asset, so the body is not
+          # overwritten with different prose.
           if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            changelog="$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
-              -f tag_name="$GITHUB_REF_NAME" -f target_commitish="$GITHUB_SHA" -q .body)"
-            caveat=$'Unsigned build (Apple silicon). Drag **Cullr** to Applications, then right-click it → **Open** the first time: Gatekeeper blocks a plain double-click until the app has been opened once.\n\nEverything runs on your machine: no uploads, no account. Verify the download against `SHA256SUMS`; dependency and model licences are in `NOTICE.md`, also inside the app bundle.'
+            previous="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+            args=(--version "$version" --tag "$GITHUB_REF_NAME"
+                  --repo "$GITHUB_REPOSITORY" --out dist/NOTES.md)
+            if [ -n "$previous" ]; then args+=(--previous "$previous"); fi
+            python scripts/release_notes.py "${args[@]}"
             gh release create "$GITHUB_REF_NAME" \
               --title "Cullr $version" \
-              --notes "$caveat"$'\n\n'"$changelog"
+              --notes-file dist/NOTES.md
           fi
           gh release upload "$GITHUB_REF_NAME" dist/*.dmg dist/SHA256SUMS --clobber
