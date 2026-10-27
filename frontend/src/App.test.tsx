@@ -4,7 +4,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type {
-  Capabilities, Job, Library, PhotoResponse, Settings, Stats,
+  Capabilities, Job, Library, Photo, PhotoResponse, Settings, Stats,
 } from "./types";
 
 /**
@@ -131,6 +131,41 @@ const jobOf = (over: Partial<Job> = {}): Job => ({
   error: null,
   error_count: 0,
   error_sample: null,
+  ...over,
+});
+
+const photoOf = (over: Partial<Photo> = {}): Photo => ({
+  id: 1,
+  filename: "IMG_0001.jpg",
+  path: "/shoots/Teasers/IMG_0001.jpg",
+  width: 1200,
+  height: 800,
+  captured_at: null,
+  camera: null,
+  lens: null,
+  iso: null,
+  shutter: null,
+  aperture: null,
+  focal_len: null,
+  quality: null,
+  verdict: "keep",
+  ai_verdict: null,
+  reason: null,
+  user_decision: null,
+  star: 0,
+  group_id: null,
+  is_lead: false,
+  covered_person: null,
+  sharpness: null,
+  exposure: null,
+  clip_hi: null,
+  clip_lo: null,
+  noise: null,
+  face_count: 0,
+  eyes_open: null,
+  blink: false,
+  error: null,
+  faces: [],
   ...over,
 });
 
@@ -591,5 +626,82 @@ describe("the unreadable filter", () => {
     await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
     expect(within(sidebar()).queryByRole("button", { name: /Unreadable/ })).toBeNull();
     expect(within(sidebar()).getByRole("button", { name: /Rejected/ })).toBeTruthy();
+  });
+});
+
+describe("the grid while a scan runs", () => {
+  async function startScan(job: Job, listPhotos: () => Photo[]) {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    api.photos.mockImplementation(() => {
+      const photos = listPhotos();
+      return Promise.resolve({ photos, total: photos.length, stats: statsOf(TOTAL) });
+    });
+    api.scan.mockResolvedValue(job);
+    api.job.mockResolvedValue(job);
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
+  }
+
+  it("says what the scan is doing instead of claiming nothing matches", async () => {
+    await startScan(
+      jobOf({ status: "running", stage: "analyzing", done: 12,
+              message: "Analysed 12 of 72 photos" }),
+      () => [],
+    );
+
+    expect(await screen.findByText(
+      /Analysed 12 of 72 photos — frames appear here as they are checked\./,
+    )).toBeTruthy();
+    // The message this replaces: the filter is "All frames", the shoot has 72
+    // photos, and nothing has been filtered out — the rows are not there yet.
+    expect(screen.queryByText("No frames match this filter.")).toBeNull();
+  });
+
+  it("fills the grid in mid-scan instead of waiting for the last frame", async () => {
+    const shown: Photo[] = [];
+    await startScan(
+      jobOf({ status: "running", stage: "analyzing", done: 3,
+              message: "Analysed 3 of 72 photos" }),
+      () => shown,
+    );
+
+    expect(await screen.findByText(/frames appear here/)).toBeTruthy();
+    // The job never leaves "running" here, so tiles can only come from the
+    // slower list refresh — the difference between a grid that fills in and one
+    // that appears all at once when the scan ends.
+    shown.push(photoOf({ id: 1, filename: "IMG_0001.jpg" }));
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: /IMG_0001\.jpg/ })).toBeTruthy(),
+      { timeout: 4000 },
+    );
+  });
+
+  it("goes back to no-frames-match once the scan has finished", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    api.photos.mockResolvedValue({ photos: [], total: 0, stats: statsOf(TOTAL) });
+    const running = jobOf({ status: "running", stage: "analyzing", done: 70,
+                            message: "Analysed 70 of 72 photos" });
+    api.scan.mockResolvedValue(running);
+    api.job.mockResolvedValueOnce(running)
+      .mockResolvedValue(jobOf({ message: "0 keepers · 0 groups · 72 photos in 9.0s" }));
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
+
+    expect(await screen.findByText(/frames appear here/)).toBeTruthy();
+    // Two 650 ms job polls away, so this needs more than the default timeout.
+    expect(await screen.findByText("No frames match this filter.",
+                                   {}, { timeout: 4000 })).toBeTruthy();
   });
 });

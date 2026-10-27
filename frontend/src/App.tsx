@@ -85,6 +85,7 @@ export default function App() {
   const [dismissedJob, setDismissedJob] = useState<number | null>(null);
 
   const busy = job?.status === "running";
+  const scanProgress = busy ? job?.message ?? job?.stage ?? "Scanning" : null;
   /** A finished scan that could not read files: the one case where "0 keepers"
    *  is not an answer. Derived from the job row (re-read with the library), not
    *  from state the refresh would drop. */
@@ -158,13 +159,20 @@ export default function App() {
   useEffect(() => {
     if (!job || job.status !== "running" || !library) return;
     let stopped = false;
+    let ticks = 0;
     const timer = window.setInterval(() => {
       void api
         .job(job.id)
         .then((next) => {
           if (stopped) return;
           setJob(next);
-          if (next.status !== "running") {
+          ticks += 1;
+          // The list is re-read every third tick (~2 s) while the scan runs, so
+          // the grid fills in as frames are analysed instead of appearing all
+          // at once at the end. The 650 ms job poll stays as it is; the photo
+          // list is the expensive one to re-read, and the scan is still writing
+          // rows between the two.
+          if (next.status !== "running" || ticks % 3 === 0) {
             return refresh(library.id, filter, personId);
           }
           return undefined;
@@ -487,16 +495,26 @@ export default function App() {
               review the rest.
             </p>
           )}
-          <Sheet
-            photos={photos}
-            people={people}
-            selectedId={selectedId}
-            onSelect={(photo) => setSelectedId(photo.id)}
-            onOpen={(photo) => {
-              setSelectedId(photo.id);
-              setLoupeId(photo.id);
-            }}
-          />
+          {busy && photos.length === 0 ? (
+            // "No frames match this filter." is wrong while a scan is running:
+            // nothing has been filtered out, the rows simply are not there yet.
+            // The job's own line matches the top bar, so the two cannot
+            // disagree about what is happening.
+            <div className="sheet-empty" role="status">
+              <p>{scanProgress} — frames appear here as they are checked.</p>
+            </div>
+          ) : (
+            <Sheet
+              photos={photos}
+              people={people}
+              selectedId={selectedId}
+              onSelect={(photo) => setSelectedId(photo.id)}
+              onOpen={(photo) => {
+                setSelectedId(photo.id);
+                setLoupeId(photo.id);
+              }}
+            />
+          )}
         </main>
       </div>
 
