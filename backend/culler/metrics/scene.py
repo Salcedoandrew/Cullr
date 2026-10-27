@@ -20,8 +20,11 @@ what it was before scene embeddings existed.
 
 from __future__ import annotations
 
-import importlib.util
+import hashlib
 import threading
+import urllib.request
+from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -31,6 +34,10 @@ MODEL_FILENAME = "dinov2_vits14_fp16.onnx"
 MODEL_URL = (
     "https://huggingface.co/onnx-community/dinov2-small/resolve/main/onnx/model_fp16.onnx"
 )
+# Pinned: the exact graph the duplicate threshold was calibrated against. Both
+# the CLI and the app verify it, so a changed upstream export cannot silently
+# alter grouping.
+MODEL_SHA256 = "16845e153bbaf3fd1ef8a2154c454940f901f6fe8a80dd4c6c319eaecdb4d2ee"
 EMBEDDING_DIM = 384
 IMAGE_SIZE = 224
 
@@ -57,19 +64,87 @@ def default_model_path() -> Path:
     return default_data_dir() / "models" / MODEL_FILENAME
 
 
-def semantic_available(model_path: Path | str | None = None) -> bool:
-    """True when the optional runtime and the model file are both present.
+@lru_cache(maxsize=1)
+def runtime_available() -> bool:
+    """True when the bundled scene runtime is installed and can load.
 
-    Cheap enough for `/api/capabilities`: it checks the filesystem and the
-    import system, but never builds an ONNX session.
+    A spec check is not enough for a frozen app: a bundle that collected the
+    Python package but not ``libonnxruntime`` would pass it and then fail at the
+    first embedding. Importing the module is the real test, and it is cached
+    because the import costs a fraction of a second once per process.
     """
-    path = Path(model_path) if model_path else default_model_path()
-    if not path.is_file():
-        return False
     try:
-        return importlib.util.find_spec("onnxruntime") is not None
-    except (ImportError, ValueError):
+        import onnxruntime  # noqa: F401 - the import is the check
+    except Exception:  # noqa: BLE001 - ImportError, or OSError from the dylib
         return False
+    return True
+
+
+def model_present(model_path: Path | str | None = None) -> bool:
+    return (Path(model_path) if model_path else default_model_path()).is_file()
+
+
+def model_verified(model_path: Path | str | None = None) -> bool:
+    """Hash-check the model. Only for explicit download actions: 42 MB per call."""
+    path = Path(model_path) if model_path else default_model_path()
+    return path.is_file() and _digest(path) == MODEL_SHA256
+
+
+def semantic_available(model_path: Path | str | None = None) -> bool:
+    """True when the runtime and a model file are both present.
+
+    Cheap enough for `/api/capabilities`: a filesystem stat and an import-system
+    check, never a 42 MB hash and never an ONNX session. A corrupt file is
+    caught when the session is built (`SceneEmbedder.available`).
+    """
+    return runtime_available() and model_present(model_path)
+
+
+def _digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download_model(
+    target: Path | str | None = None,
+    progress: Callable[[int, int], None] | None = None,
+) -> Path:
+    """Fetch the pinned scene model, verifying it before it is installed.
+
+    The download lands beside the target as `.download` and is renamed only
+    after the SHA-256 matches, so a truncated or tampered transfer can never be
+    used. ``progress(done, total)`` is called per megabyte; ``total`` is 0 when
+    the server sends no Content-Length. Raises on any failure.
+    """
+    path = Path(target) if target else default_model_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        if _digest(path) == MODEL_SHA256:
+            return path
+        path.unlink()                 # present but not the pinned graph
+
+    tmp = path.with_suffix(".download")
+    try:
+        with urllib.request.urlopen(MODEL_URL, timeout=120) as response, \
+                tmp.open("wb") as handle:
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            while chunk := response.read(1 << 20):
+                handle.write(chunk)
+                done += len(chunk)
+                if progress is not None:
+                    progress(done, total)
+        digest = _digest(tmp)
+        if digest != MODEL_SHA256:
+            raise ValueError(f"scene model checksum mismatch: {digest}")
+        tmp.replace(path)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
+    return path
 
 
 def preprocess(bgr: np.ndarray, size: int = IMAGE_SIZE) -> np.ndarray | None:

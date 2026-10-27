@@ -317,6 +317,13 @@ def main(argv: list[str] | None = None) -> int:
             report.check("the service boots and answers", True, base)
             report.check("the face model loads inside the build", bool(capabilities.get("faces")),
                          capabilities.get("faces_error") or "faces available")
+            # The runtime ships in the bundle; the weights are a first-use
+            # download. Without the runtime the cull options hide the toggle.
+            report.check("the scene runtime is bundled",
+                         bool(capabilities.get("semantic_runtime")),
+                         "onnxruntime importable in the build"
+                         if capabilities.get("semantic_runtime")
+                         else "no onnxruntime; the semantic extra was not installed")
 
             types = [entry["key"] for entry in capabilities.get("import_types", [])]
             extensions = {ext.lower() for entry in capabilities.get("import_types", [])

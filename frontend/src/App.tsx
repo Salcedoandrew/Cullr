@@ -21,6 +21,7 @@ const FALLBACK_SETTINGS: Settings = {
   detect_blur: true,
   detect_highlights: true,
   group_duplicates: true,
+  semantic_dedup: false,
   person_coverage: true,
   target_ratio: null,
   overwrite_xmp: true,
@@ -156,6 +157,15 @@ export default function App() {
       window.clearInterval(timer);
     };
   }, [job?.id, job?.status, library?.id, filter, personId, refresh]);
+
+  /** Re-read capabilities after the scene model finishes downloading, so the
+   *  cull dialog can stop offering the download. */
+  const refreshCapabilities = useCallback(() => {
+    void api
+      .capabilities()
+      .then((next) => setCapabilities(next))
+      .catch(() => undefined);
+  }, []);
 
   const startScan = useCallback(
     async (libraryId: number, active: Settings, force: boolean) => {
@@ -499,6 +509,7 @@ export default function App() {
             setExportOpen(true);
           }}
           onClose={() => setCullOpen(false)}
+          onSemanticReady={refreshCapabilities}
         />
       )}
 

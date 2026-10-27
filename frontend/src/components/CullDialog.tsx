@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Capabilities, Settings, Stats } from "../types";
+import { api } from "../api";
+import type { Capabilities, SemanticStatus, Settings, Stats } from "../types";
 
 /**
  * The pre-cull window: what kind of shoot this is, how many frames to keep, and
@@ -24,6 +25,8 @@ interface Props {
   onStart: (force: boolean) => void;
   onOpenExport: () => void;
   onClose: () => void;
+  /** The scene model finished downloading; capabilities can be refreshed. */
+  onSemanticReady: () => void;
 }
 
 const MIN_PERCENT = 10;
@@ -99,6 +102,9 @@ function DetectToggle({
   );
 }
 
+const sizeLabel = (bytes: number): string =>
+  `${Math.max(1, Math.round(bytes / (1 << 20)))} MB`;
+
 function helperText(ratio: number): string {
   if (ratio < 0.2) {
     return "A lower target gives a tighter selection, focused on your best images. "
@@ -113,7 +119,8 @@ function helperText(ratio: number): string {
 }
 
 export function CullDialog({
-  stats, discoveredTotal, settings, capabilities, busy, onChange, onStart, onOpenExport, onClose,
+  stats, discoveredTotal, settings, capabilities, busy, onChange, onStart, onOpenExport,
+  onClose, onSemanticReady,
 }: Props) {
   const preset = capabilities.presets.find((option) => option.key === settings.preset);
   // A scan that already ran knows the real total; before the first scan the
@@ -125,6 +132,11 @@ export function CullDialog({
 
   const [targetMode, setTargetMode] = useState(settings.target_ratio !== null);
   const [ratio, setRatio] = useState(settings.target_ratio ?? DEFAULT_RATIO);
+  // The scene model is downloaded from here on first use; the dialog polls
+  // its progress and unlocks Start Cull when the file is installed.
+  const [semantic, setSemantic] = useState<SemanticStatus | null>(null);
+  const [semanticError, setSemanticError] = useState<string | null>(null);
+  const downloading = semantic?.downloading ?? false;
   const dialog = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -162,6 +174,48 @@ export function CullDialog({
 
   const helper = useMemo(() => helperText(ratio), [ratio]);
   const handleOffset = ((percent - MIN_PERCENT) / (MAX_PERCENT - MIN_PERCENT)) * 100;
+
+  // Poll only while a download is running. A finished download refreshes the
+  // capabilities, which is what makes the toggle's info text honest.
+  useEffect(() => {
+    if (!semantic?.downloading) return;
+    let stopped = false;
+    const timer = window.setInterval(() => {
+      void api
+        .semanticStatus()
+        .then((next) => {
+          if (stopped) return;
+          setSemantic(next);
+          if (next.error) setSemanticError(next.error);
+          if (next.available) onSemanticReady();
+        })
+        .catch(() => undefined);
+    }, 800);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, [semantic?.downloading, onSemanticReady]);
+
+  const toggleSemantic = async (value: boolean) => {
+    setSemanticError(null);
+    onChange({ ...settings, semantic_dedup: value });
+    if (!value) {
+      // The download carries on in the background, but this cull no longer
+      // waits for it, so Start Cull unlocks right away.
+      setSemantic(null);
+      return;
+    }
+    if (capabilities.semantic) return;
+    try {
+      const started = await api.downloadSceneModel();
+      setSemantic(started);
+      if (started.error) setSemanticError(started.error);
+      else if (started.available) onSemanticReady();
+    } catch (event) {
+      setSemanticError(event instanceof Error ? event.message : String(event));
+    }
+  };
 
   return (
     <div
@@ -322,6 +376,33 @@ export function CullDialog({
               checked={settings.group_duplicates}
               onChange={(value) => onChange({ ...settings, group_duplicates: value })}
             />
+            {settings.group_duplicates && capabilities.semantic_runtime && (
+              <DetectToggle
+                label="Detect Duplicates (AI)"
+                info="Also catches the same shot when a hand or expression moved. The first use downloads a 42 MB scene model, once."
+                checked={settings.semantic_dedup}
+                onChange={(value) => void toggleSemantic(value)}
+              />
+            )}
+            {settings.group_duplicates && !capabilities.semantic_runtime && (
+              <p className="cull__warn">
+                Scene-model duplicate detection is not installed in this build.
+              </p>
+            )}
+            {downloading && (
+              <p className="cull__help">
+                <span className="cull__help-icon"><InfoDot /></span>
+                Downloading the scene model — {sizeLabel(semantic?.done ?? 0)}
+                {semantic && semantic.total > 0 ? ` of ${sizeLabel(semantic.total)}` : ""}.
+                Start Cull unlocks when it finishes.
+              </p>
+            )}
+            {semanticError && (
+              <p className="cull__warn">
+                Scene model download failed: {semanticError}. Turn the option off
+                and on to try again.
+              </p>
+            )}
             <DetectToggle
               label="Detect Highlights"
               info="Rejects frames with blown highlights."
@@ -382,7 +463,7 @@ export function CullDialog({
               type="button"
               className="cull__relink"
               onClick={() => onStart(true)}
-              disabled={busy}
+              disabled={busy || downloading}
             >
               Re-analyse every frame (ignore cached results)
             </button>
@@ -418,9 +499,9 @@ export function CullDialog({
             type="button"
             className="cull__start"
             onClick={() => onStart(false)}
-            disabled={busy}
+            disabled={busy || downloading}
           >
-            {busy ? "Culling…" : "Start Cull"}
+            {busy ? "Culling…" : downloading ? "Downloading model…" : "Start Cull"}
           </button>
         </div>
       </div>

@@ -35,6 +35,8 @@ const api = vi.hoisted(() => ({
   markDistinct: vi.fn(),
   decide: vi.fn(),
   export: vi.fn(),
+  semanticStatus: vi.fn(),
+  downloadSceneModel: vi.fn(),
 }));
 
 vi.mock("./api", () => ({
@@ -59,6 +61,7 @@ const settings: Settings = {
   detect_blur: true,
   detect_highlights: true,
   group_duplicates: true,
+  semantic_dedup: false,
   person_coverage: true,
   target_ratio: null,
   overwrite_xmp: true,
@@ -71,6 +74,8 @@ const settings: Settings = {
 const capabilities: Capabilities = {
   faces: true,
   faces_error: null,
+  semantic: false,
+  semantic_runtime: true,
   presets: [
     { key: "wedding", label: "Wedding / event", description: "", strictness: 35 },
   ],
@@ -134,6 +139,7 @@ beforeEach(() => {
   api.mergeSuggestions.mockResolvedValue([]);
   api.latestJob.mockResolvedValue({});
   api.discover.mockResolvedValue({ total: 0 });
+  api.semanticStatus.mockResolvedValue({ available: false, downloading: false, error: null });
 });
 
 afterEach(cleanup);
@@ -232,5 +238,29 @@ describe("the cull options count", () => {
     expect(within(dialog).queryByText(/of [\d,]+ photos/)).toBeNull();
     expect(keepField(dialog).value).toBe("0");
     expect(screen.queryByRole("alert")).toBeNull();
+  });
+});
+
+describe("the semantic dedup toggle", () => {
+  it("downloads the scene model on first use and holds the start until it lands", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    api.downloadSceneModel.mockResolvedValue(
+      { available: false, downloading: true, error: null });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByLabelText("Detect Duplicates (AI)"));
+
+    // The toggle is the whole opt-in: one click downloads the weights, and the
+    // cull cannot start until they are on disk.
+    await waitFor(() => expect(api.downloadSceneModel).toHaveBeenCalledTimes(1));
+    const start = await within(dialog).findByRole(
+      "button", { name: "Downloading model…" }) as HTMLButtonElement;
+    expect(start.disabled).toBe(true);
   });
 });

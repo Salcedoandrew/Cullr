@@ -93,9 +93,11 @@ port that closes with the window.
   whole ceremony into one group.
 * **Optional scene model** — a DINOv2-small scene vector per photo can confirm
   loose hash matches, so a shot where a hand or expression moved still groups.
-  Off by default: it needs the `semantic` extra and a one-time ~42 MB download
-  (`culler fetch-scene-model`), and adds about 40 ms per photo. Without it,
-  grouping is exactly the hash-only behaviour above.
+  Switch on *Detect Duplicates (AI)* in the cull options: the first use downloads
+  the checksum-pinned ~42 MB weights, and the scan then costs about 40 ms more
+  per photo. The runtime ships in the Mac app; from source it needs the
+  `semantic` extra. Off by default, and with it off grouping is exactly the
+  hash-only behaviour above.
 * **Best of group** — quality with *bounded* tie-breaks for open eyes, face
   sharpness and expression, so a blink fixes a near-tie but never rescues a bad
   frame. Every group keeps at least one frame.
@@ -180,8 +182,8 @@ port that closes with the window.
 * **Speed** — roughly 4–8 photos/second on an M-series laptop, CPU only (8
   threads), so a 1,000-frame shoot analyses in a few minutes.
 * **Privacy** — no uploads, no account and no telemetry; model weights are
-  downloaded only when you run `fetch-model` or `fetch-scene-model` yourself, and
-  after that the app makes no network calls.
+  downloaded only when you run `fetch-model` / `fetch-scene-model` or switch on
+  the scene-model toggle yourself, and after that the app makes no network calls.
 * **Headless** — the same engine from a terminal: `culler scan
   ~/Pictures/shoot --preset wedding --strictness 40`, `culler export
   ~/Pictures/shoot --mode sidecar|copy|csv`, `culler serve`, `culler fetch-model`,
@@ -202,7 +204,9 @@ uv pip install --python .venv/bin/python -e "backend[faces]"   # face/blink dete
 .venv/bin/python -m culler.cli fetch-model
 
 # Optional: semantic duplicate confirmation (DINOv2-small, Apache-2.0, ~42 MB).
-# Off by default; enable it per library with `culler scan --semantic`.
+# Off by default; enable it in the cull options (Detect Duplicates (AI), which
+# downloads the weights on first use) or headlessly with `culler scan --semantic`.
+# This extra is only for running from source; the Mac app bundles the runtime.
 uv pip install --python .venv/bin/python -e "backend[semantic]"
 .venv/bin/python -m culler.cli fetch-scene-model
 
@@ -236,8 +240,8 @@ uv pip install --python .venv/bin/python -e "backend[desktop]"
 
 `desktop/build_macos.sh` does the whole package: builds the UI, draws the icon
 (`desktop/make_icon.py`), freezes `Cullr.app` with PyInstaller, smoke-tests the
-frozen service (it must answer `/api/capabilities` with faces enabled), signs it
-ad-hoc and writes `dist/Cullr-<version>-arm64.dmg`. A `v*` tag runs the same
+frozen service (it must answer `/api/capabilities` with faces and the scene
+runtime enabled), signs it ad-hoc and writes `dist/Cullr-<version>-arm64.dmg`. A `v*` tag runs the same
 script on a macOS runner (see [`.github/workflows/release.yml`](.github/workflows/release.yml))
 and attaches the `.dmg` plus `SHA256SUMS` to the release.
 

@@ -42,7 +42,10 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install -e "backend[dev,faces,desktop]"
+          # `semantic` is what lets the shipped app run the scene model: the
+          # weights stay a first-use download, the runtime must be inside the
+          # bundle. Cullr.spec collects it when it is installed here.
+          .venv/bin/python -m pip install -e "backend[dev,faces,desktop,semantic]"
 
       # Fails before the long build if the README's feature block (the source of
       # the release notes) has lost its markers.

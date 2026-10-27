@@ -70,6 +70,14 @@ case "$CAPS" in
   *'"faces":true'*) echo "faces: available" ;;
   *) echo "face model did not load inside the bundle: $CAPS" >&2; exit 1 ;;
 esac
+# The scene model's weights are a first-use download, but the runtime has to be
+# inside the bundle or the cull-options toggle could never fetch them. A frozen
+# onnxruntime that lost its dylib is exactly the failure this catches.
+case "$CAPS" in
+  *'"semantic_runtime":true'*) echo "scene runtime: available" ;;
+  *) echo "onnxruntime missing from the bundle (install backend[semantic]): $CAPS" >&2
+     exit 1 ;;
+esac
 curl -fsS -o /dev/null "$BASE/" && echo "UI: served from the bundle"
 curl -fsS -o /dev/null "$BASE/api/libraries" && echo "API: responding"
 cleanup

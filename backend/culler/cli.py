@@ -14,19 +14,18 @@ from .config import PRESETS, CullingSettings, resource_path
 from .db import Store, default_data_dir
 from .metrics.faces import MODEL_FILENAME, MODEL_URL
 from .metrics.scene import (
-    MODEL_FILENAME as SCENE_MODEL_FILENAME,
     MODEL_URL as SCENE_MODEL_URL,
     default_model_path as scene_model_path,
+    download_model as download_scene_model,
+    model_verified as scene_model_verified,
 )
 from .pipeline import run_scan
 
 # Pinned: the same SHA-256 facet verifies for its MediaPipe bundle.
 MODEL_SHA256 = "64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff"
 MODEL_DIR = resource_path("models")
-# Pinned: the exact fp16 DINOv2-small graph the duplicate threshold was
-# calibrated against. Convicted by hash, not by filename, so a changed upstream
-# export cannot silently alter grouping.
-SCENE_MODEL_SHA256 = "16845e153bbaf3fd1ef8a2154c454940f901f6fe8a80dd4c6c319eaecdb4d2ee"
+# The scene model's URL and pinned SHA-256 live in metrics/scene.py, which is
+# also what the app uses for its own first-use download.
 
 
 def _store(args) -> Store:
@@ -61,25 +60,17 @@ def cmd_fetch_model(args) -> int:
 def cmd_fetch_scene_model(args) -> int:
     """Download the optional scene model used for semantic dedup."""
     target = scene_model_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
+    if scene_model_verified(target):
+        print(f"scene model already present: {target}")
+        return 0
     if target.exists():
-        digest = hashlib.sha256(target.read_bytes()).hexdigest()
-        if digest == SCENE_MODEL_SHA256:
-            print(f"scene model already present: {target}")
-            return 0
         print("existing scene model failed verification, re-downloading")
-        target.unlink()
     print(f"downloading {SCENE_MODEL_URL}")
-    tmp = target.with_suffix(".download")
-    with urllib.request.urlopen(SCENE_MODEL_URL, timeout=300) as response, \
-            tmp.open("wb") as fh:
-        shutil.copyfileobj(response, fh)
-    digest = hashlib.sha256(tmp.read_bytes()).hexdigest()
-    if digest != SCENE_MODEL_SHA256:
-        tmp.unlink(missing_ok=True)
-        print(f"checksum mismatch: {digest}", file=sys.stderr)
+    try:
+        download_scene_model(target)
+    except Exception as exc:  # noqa: BLE001 - report it, do not crash the CLI
+        print(f"download failed: {exc}", file=sys.stderr)
         return 1
-    tmp.rename(target)
     print(f"saved {target}")
     return 0
 

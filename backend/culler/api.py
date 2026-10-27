@@ -28,7 +28,10 @@ from .config import (
 from .db import Store, default_data_dir, serialize_photo
 from .imaging import iter_images, render_jpeg
 from .metrics.faces import FaceAnalyzer
-from .metrics.scene import semantic_available
+from .metrics.scene import (
+    download_model, model_present, model_verified, runtime_available,
+    semantic_available,
+)
 from .persons import clusters_from_rows, propose_merges
 from .pipeline import run_scan
 
@@ -336,11 +339,75 @@ class JobRunner:
         return True
 
 
+class SceneModelInstaller:
+    """One scene-model download at a time, in a daemon thread.
+
+    The app is the only client, so the state is a few counters rather than a
+    job row: the cull dialog polls `/api/semantic` while its toggle is waiting.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._thread: threading.Thread | None = None
+        self._done = 0
+        self._total = 0
+        self._error: str | None = None
+
+    def _snapshot(self) -> dict:
+        running = self._thread is not None and self._thread.is_alive()
+        return {
+            "runtime": runtime_available(),
+            "model": model_present(),
+            "available": semantic_available(),
+            "downloading": running,
+            "done": self._done,
+            "total": self._total,
+            "error": self._error,
+        }
+
+    def status(self) -> dict:
+        with self._lock:
+            return self._snapshot()
+
+    def start(self) -> dict:
+        if not runtime_available():
+            raise HTTPException(
+                409, "this build has no scene runtime; install the semantic extra"
+            )
+        # Hash outside the lock: 42 MB should not block the progress polls.
+        if model_present() and model_verified():
+            return self.status()
+        with self._lock:
+            if self._thread is not None and self._thread.is_alive():
+                return self._snapshot()
+            self._done = 0
+            self._total = 0
+            self._error = None
+            self._thread = threading.Thread(
+                target=self._work, name="scene-model", daemon=True
+            )
+            self._thread.start()
+            return self._snapshot()
+
+    def _progress(self, done: int, total: int) -> None:
+        with self._lock:
+            self._done = done
+            self._total = total
+
+    def _work(self) -> None:
+        try:
+            download_model(progress=self._progress)
+        except Exception as exc:  # noqa: BLE001 - surfaced through /api/semantic
+            with self._lock:
+                self._error = f"{type(exc).__name__}: {exc}"
+
+
 def create_app(data_dir: Path | None = None) -> FastAPI:
     data_dir = Path(data_dir) if data_dir else default_data_dir()
     data_dir.mkdir(parents=True, exist_ok=True)
     store = Store(data_dir / "catalog.db")
     runner = JobRunner(store)
+    scene_model = SceneModelInstaller()
     cache_dir = data_dir / "previews"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -359,9 +426,12 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         return {
             "faces": runner.faces.available,
             "faces_error": runner.faces.load_error,
-            # Optional: the DINOv2 scene model is a download, not a bundled
-            # asset, so the UI can offer it only when it is actually usable.
+            # Optional: the DINOv2 scene runtime ships with the build, but the
+            # weights are a first-use download. The UI offers the toggle only
+            # when the runtime is there, and shows download progress until the
+            # model is too.
             "semantic": semantic_available(),
+            "semantic_runtime": runtime_available(),
             "presets": [
                 {"key": p.key, "label": p.label, "description": p.description,
                  "strictness": p.strictness}
@@ -377,6 +447,17 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                 for key in IMPORT_TYPE_KEYS
             ],
         }
+
+    # ---- semantic duplicate model -------------------------------------- #
+    @app.get("/api/semantic")
+    def semantic_status() -> dict:
+        """Whether the scene runtime and model are ready, and download progress."""
+        return scene_model.status()
+
+    @app.post("/api/semantic/model")
+    def download_semantic_model() -> dict:
+        """Start the one-time scene-model download (idempotent)."""
+        return scene_model.start()
 
     # ---- folders ------------------------------------------------------- #
     @app.get("/api/folders")

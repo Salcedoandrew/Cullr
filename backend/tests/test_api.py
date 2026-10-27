@@ -354,3 +354,90 @@ def test_people_are_listed_filterable_and_have_thumbnails(client, photo_dir):
     assert crop.headers["content-type"] == "image/jpeg"
     assert len(crop.content) > 500
     assert client.get(f"/api/photos/{photo['id']}/face/999999").status_code == 404
+
+
+def test_capabilities_report_whether_the_scene_model_can_be_used(client):
+    body = client.get("/api/capabilities").json()
+    assert isinstance(body["semantic_runtime"], bool)
+    assert isinstance(body["semantic"], bool)
+    # A downloaded model without the runtime is not usable, so the UI is told
+    # about the runtime separately and only offers the toggle when it is there.
+    assert not body["semantic"] or body["semantic_runtime"]
+
+
+def test_semantic_status_reports_model_state(client):
+    body = client.get("/api/semantic").json()
+    assert {"runtime", "model", "available", "downloading", "done", "total",
+            "error"} <= set(body)
+    assert body["downloading"] is False
+    assert body["error"] is None
+
+
+def test_scene_model_download_is_refused_without_the_runtime(client, monkeypatch):
+    monkeypatch.setattr("culler.api.runtime_available", lambda: False)
+    response = client.post("/api/semantic/model")
+    assert response.status_code == 409
+    assert "semantic" in response.json()["detail"]
+
+
+def test_scene_model_download_runs_once_and_reports_progress(client, monkeypatch):
+    """Clicking the toggle twice must not start two downloads."""
+    import threading
+
+    import culler.api as api_module
+
+    calls: list[int] = []
+    started = threading.Event()
+    release = threading.Event()
+
+    def fake_download(progress=None):
+        calls.append(1)
+        if progress:
+            progress(10, 42)
+        started.set()
+        release.wait(5.0)
+
+    monkeypatch.setattr(api_module, "runtime_available", lambda: True)
+    monkeypatch.setattr(api_module, "model_present", lambda: False)
+    monkeypatch.setattr(api_module, "model_verified", lambda: False)
+    monkeypatch.setattr(api_module, "download_model", fake_download)
+
+    first = client.post("/api/semantic/model").json()
+    assert first["runtime"] is True
+    assert started.wait(5.0), "the download thread never started"
+
+    # The second click lands while the first download is still in flight.
+    second = client.post("/api/semantic/model").json()
+    assert second["downloading"] is True
+    release.set()
+
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
+        body = client.get("/api/semantic").json()
+        if not body["downloading"]:
+            break
+        time.sleep(0.02)
+    assert body["downloading"] is False
+    assert body["error"] is None
+    assert calls == [1]
+    assert (body["done"], body["total"]) == (10, 42)
+
+
+def test_semantic_dedup_round_trips_with_the_library(tmp_path):
+    root = tmp_path / "shoot"
+    root.mkdir()
+    app = create_app(tmp_path / "data")
+    with TestClient(app) as client:
+        created = client.post("/api/libraries", json={
+            "path": str(root),
+            "settings": {"semantic_dedup": True, "embedding_threshold": 0.9},
+        }).json()
+        assert created["settings"]["semantic_dedup"] is True
+        assert created["settings"]["embedding_threshold"] == 0.9
+
+        listed = client.get("/api/libraries").json()[0]
+        assert listed["settings"]["semantic_dedup"] is True
+
+        # Off again: a library that never opts in keeps today's hash-only path.
+        assert client.get("/api/capabilities").json()["default_settings"][
+            "semantic_dedup"] is False

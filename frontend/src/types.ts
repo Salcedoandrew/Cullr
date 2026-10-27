@@ -164,6 +164,8 @@ export interface Settings {
   detect_blur: boolean;
   detect_highlights: boolean;
   group_duplicates: boolean;
+  /** Confirm loose hash matches with a scene embedding; needs a 42 MB model. */
+  semantic_dedup: boolean;
   person_coverage: boolean;
   /** "Cull to target" fraction (0..1); null means the quality gates decide. */
   target_ratio: number | null;
@@ -187,10 +189,25 @@ export interface Preset {
 export interface Capabilities {
   faces: boolean;
   faces_error: string | null;
+  /** Scene runtime installed and model downloaded: the toggle is usable. */
+  semantic: boolean;
+  /** Scene runtime is in this build (the weights may still be missing). */
+  semantic_runtime: boolean;
   presets: Preset[];
   default_settings: Settings;
   analysis_long_edge: number;
   import_types: ImportType[];
+}
+
+/** State of the first-use scene-model download. */
+export interface SemanticStatus {
+  runtime: boolean;
+  model: boolean;
+  available: boolean;
+  downloading: boolean;
+  done: number;
+  total: number;
+  error: string | null;
 }
 
 export interface PhotoResponse {

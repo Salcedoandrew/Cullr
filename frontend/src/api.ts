@@ -1,6 +1,6 @@
 import type {
   Capabilities, FilterKey, FolderListing, ImportOptions, Job, Library, MergeSuggestion,
-  Person, Photo, PhotoResponse, Settings, Stats,
+  Person, Photo, PhotoResponse, SemanticStatus, Settings, Stats,
 } from "./types";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -23,6 +23,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   capabilities: () => request<Capabilities>("/api/capabilities"),
+
+  /** Scene model state; polled by the cull dialog while a download runs. */
+  semanticStatus: () => request<SemanticStatus>("/api/semantic"),
+  downloadSceneModel: () =>
+    request<SemanticStatus>("/api/semantic/model", { method: "POST" }),
 
   libraries: () => request<Library[]>("/api/libraries"),
   createLibrary: (path: string, settings?: ImportOptions) =>
