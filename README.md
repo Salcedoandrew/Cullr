@@ -67,7 +67,9 @@ port that closes with the window.
   shares, volumes), an icon or list browser with real thumbnails, item counts
   and image dimensions, a breadcrumb menu, search, and **New Folder**; styled
   with the system's materials rather than the app's palette.
-* **Recent folders** — the shoots you have opened before, one click to reopen.
+* **Recent folders** — the shoots you have opened before, one click to reopen;
+  an unscanned shoot reopened this way still shows its photo count in the cull
+  options, so the target can be set before the first cull.
 
 ### The culling engine
 
