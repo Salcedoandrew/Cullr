@@ -177,6 +177,8 @@ export function CullDialog({
     settings.rating_scheme ?? capabilities.default_settings.rating_scheme,
   );
   const [reExport, setReExport] = useState(false);
+  // Re-analysing throws away every cached measurement, so it takes two taps.
+  const [confirmReanalyse, setConfirmReanalyse] = useState(false);
   // The target helper doubles as a callout while the slider is held, the way
   // Aftershoot shows it; releasing returns it to the always-on block so the
   // copy is never hidden.
@@ -204,6 +206,19 @@ export function CullDialog({
   const percent = Math.round(ratio * 100);
   const count = total > 0 ? Math.max(1, Math.round(ratio * total)) : 0;
   const strictness = settings.strictness ?? preset?.strictness ?? 50;
+  const keepMin = settings.keep_min_per_group ?? 1;
+  const setKeepMin = (value: number) =>
+    onChange({ ...settings, keep_min_per_group: Math.min(10, Math.max(1, value)) });
+  // Detect Duplicates is the AI toggle's parent: turning the parent off must
+  // not leave semantic dedup on and invisible.
+  const toggleDuplicates = (value: boolean) => {
+    onChange({
+      ...settings,
+      group_duplicates: value,
+      semantic_dedup: value ? settings.semantic_dedup : false,
+    });
+    if (!value) setSemantic(null);
+  };
 
   // Auto Target's own control: the overall selection strictness as four named
   // stops, never a raw number. The nearest stop to the effective value is the
@@ -400,6 +415,13 @@ export function CullDialog({
           <span className="cull__shoot-chevron"><Chevron /></span>
         </div>
         {preset?.description && <p className="cull__shoot-hint">{preset.description}</p>}
+        {/* Surface the missing face model without opening Customize: keys
+            would otherwise be rejected for closed eyes they cannot see. */}
+        {!capabilities.faces && settings.detect_blinks && (
+          <p className="cull__warn cull__warn--panel">
+            Closed-eye detection is off — the face model is not available in this install.
+          </p>
+        )}
 
         <section className={`cull__card${targetMode ? "" : " is-auto"}`}>
           <div className="cull__modes" role="tablist" aria-label="Culling mode">
@@ -542,12 +564,12 @@ export function CullDialog({
               label="Detect Duplicates"
               info="Groups near-identical frames so only the best of each burst is kept."
               checked={settings.group_duplicates}
-              onChange={(value) => onChange({ ...settings, group_duplicates: value })}
+              onChange={toggleDuplicates}
             />
             {settings.group_duplicates && capabilities.semantic_runtime && (
               <DetectToggle
                 label="Detect Duplicates (AI)"
-                info="Also catches the same shot when a hand or expression moved. The first use downloads a 42 MB scene model, once."
+                info="Also catches the same shot when a hand or expression moved. The first use downloads a scene model (about 42 MB), once."
                 checked={settings.semantic_dedup}
                 onChange={(value) => void toggleSemantic(value)}
               />
@@ -610,21 +632,31 @@ export function CullDialog({
               onChange={(value) => onChange({ ...settings, detect_blinks: value })}
             />
 
-            <label className="cull__field cull__field--inline">
+            <div className="cull__field cull__field--inline" role="group"
+                 aria-label="Keep at least per group">
               <span>Keep at least per group</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={settings.keep_min_per_group ?? 1}
-                onChange={(event) =>
-                  onChange({
-                    ...settings,
-                    keep_min_per_group: Math.max(1, Number(event.target.value) || 1),
-                  })
-                }
-              />
-            </label>
+              <div className="cull__stepper">
+                <button
+                  type="button"
+                  className="cull__stepper-button"
+                  aria-label="Fewer keepers per group"
+                  onClick={() => setKeepMin(keepMin - 1)}
+                  disabled={keepMin <= 1}
+                >
+                  −
+                </button>
+                <output className="cull__stepper-value">{keepMin}</output>
+                <button
+                  type="button"
+                  className="cull__stepper-button"
+                  aria-label="More keepers per group"
+                  onClick={() => setKeepMin(keepMin + 1)}
+                  disabled={keepMin >= 10}
+                >
+                  +
+                </button>
+              </div>
+            </div>
 
             <label className="cull__check">
               <input
@@ -644,14 +676,6 @@ export function CullDialog({
               </p>
             )}
 
-            <button
-              type="button"
-              className="cull__relink"
-              onClick={() => onStart(true)}
-              disabled={busy || downloading}
-            >
-              Re-analyse every frame (ignore cached results)
-            </button>
           </div>
         </details>
 
@@ -678,24 +702,55 @@ export function CullDialog({
 
         {view === "main" && (
         <div className="cull__foot">
-          <label className="cull__check">
-            <input
-              type="checkbox"
-              checked={settings.overwrite_xmp}
-              onChange={(event) =>
-                onChange({ ...settings, overwrite_xmp: event.target.checked })
-              }
-            />
-            <span>Overwrite ratings in XMP files</span>
-          </label>
-          <button
-            type="button"
-            className="cull__start"
-            onClick={() => onStart(false)}
-            disabled={busy || downloading}
-          >
-            {busy ? "Culling…" : downloading ? "Downloading model…" : "Start Cull"}
-          </button>
+          <div className="cull__foot-left">
+            <label className="cull__check">
+              <input
+                type="checkbox"
+                checked={settings.overwrite_xmp}
+                onChange={(event) =>
+                  onChange({ ...settings, overwrite_xmp: event.target.checked })
+                }
+              />
+              <span>Overwrite ratings in XMP files</span>
+            </label>
+            {/* Out of Customize: it throws away every cached measurement, so it
+                is not something to find one keystroke from the toggles. */}
+            <button
+              type="button"
+              className="cull__relink"
+              onClick={() => {
+                if (confirmReanalyse) {
+                  setConfirmReanalyse(false);
+                  onStart(true);
+                } else {
+                  setConfirmReanalyse(true);
+                }
+              }}
+              onBlur={() => setConfirmReanalyse(false)}
+              disabled={busy || downloading}
+            >
+              {confirmReanalyse
+                ? "Confirm: re-analyse every frame"
+                : "Re-analyse every frame"}
+            </button>
+          </div>
+          <div className="cull__foot-right">
+            {/* Visible whatever Customize is doing. */}
+            {downloading && (
+              <span className="cull__foot-progress" role="status">
+                Downloading model — {sizeLabel(semantic?.done ?? 0)}
+                {semantic && semantic.total > 0 ? ` of ${sizeLabel(semantic.total)}` : ""}
+              </span>
+            )}
+            <button
+              type="button"
+              className="cull__start"
+              onClick={() => onStart(false)}
+              disabled={busy || downloading}
+            >
+              {busy ? "Culling…" : downloading ? "Downloading model…" : "Start Cull"}
+            </button>
+          </div>
         </div>
         )}
       </div>

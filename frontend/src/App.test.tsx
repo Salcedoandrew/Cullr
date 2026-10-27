@@ -284,6 +284,69 @@ describe("the Auto Target selection strictness", () => {
   });
 });
 
+describe("the dialog's guard rails", () => {
+  async function openDialog() {
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+    fireEvent.click(cullSettings());
+    return screen.findByRole("dialog", { name: "AI Automated Cull" });
+  }
+
+  it("makes re-analysing the whole shoot a two-tap action in the footer", async () => {
+    const dialog = await openDialog();
+    api.scan.mockResolvedValue({ id: 1, status: "running", stage: "scan" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Re-analyse every frame" }));
+    expect(api.scan).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole(
+      "button", { name: "Confirm: re-analyse every frame" }));
+    await waitFor(() => expect(api.scan).toHaveBeenCalledWith(1, expect.anything(), true));
+  });
+
+  it("bounds keep-at-least with a stepper instead of a free number", async () => {
+    const dialog = await openDialog();
+    const group = within(dialog).getByRole("group", { name: "Keep at least per group" });
+    const fewer = within(group).getByRole("button", { name: "Fewer keepers per group" });
+    const more = within(group).getByRole("button", { name: "More keepers per group" });
+
+    expect((fewer as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(more);
+    fireEvent.click(more);
+    expect(group.textContent).toContain("3");
+  });
+
+  it("turns semantic dedup off with its parent, so nothing stuck on is hidden", async () => {
+    const dialog = await openDialog();
+    api.downloadSceneModel.mockResolvedValue(
+      { available: false, downloading: true, error: null });
+
+    fireEvent.click(within(dialog).getByLabelText("Detect Duplicates (AI)"));
+    await waitFor(() => expect(api.downloadSceneModel).toHaveBeenCalledTimes(1));
+
+    // The parent goes off and back on: the AI row must come back unchecked.
+    fireEvent.click(within(dialog).getByLabelText("Detect Duplicates"));
+    fireEvent.click(within(dialog).getByLabelText("Detect Duplicates"));
+    const ai = within(dialog).getByLabelText("Detect Duplicates (AI)") as HTMLInputElement;
+    expect(ai.checked).toBe(false);
+  });
+
+  it("shows the download in the footer while Customize is collapsed", async () => {
+    const dialog = await openDialog();
+    api.downloadSceneModel.mockResolvedValue(
+      { available: false, downloading: true, done: 5 << 20, total: 42 << 20,
+        error: null });
+
+    fireEvent.click(within(dialog).getByLabelText("Detect Duplicates (AI)"));
+    const progress = () => dialog.querySelector(".cull__foot-progress")?.textContent ?? "";
+    await waitFor(() => expect(progress()).toContain("Downloading model"));
+    expect(progress()).toContain("42 MB");
+  });
+});
+
 describe("the target slider callout", () => {
   it("shows the helper as a callout while held, and returns it afterwards", async () => {
     api.libraries.mockResolvedValue([library({ id: 1 })]);
