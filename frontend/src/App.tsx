@@ -184,6 +184,10 @@ export default function App() {
         setSettings(active);
         setFilter("all");
         setPersonId(null);
+        // Drop the previous shoot's stats: the photo list refresh reports
+        // total 0 for a library with no scan yet, and a stale total would
+        // leak into the cull options before it lands.
+        setStats(null);
         // Count the import set first, so the cull options show the real
         // total instead of 0. Discovery is a names-only walk; if it fails
         // the dialog still opens and falls back to the percent-only display.

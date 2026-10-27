@@ -117,8 +117,11 @@ export function CullDialog({
 }: Props) {
   const preset = capabilities.presets.find((option) => option.key === settings.preset);
   // A scan that already ran knows the real total; before the first scan the
-  // count from import stands in, so the target never reads 0.
-  const total = stats?.total ?? discoveredTotal ?? 0;
+  // count from import stands in, so the target never reads 0. A plain `??`
+  // does not work here: the photo list refresh reports total 0 for a library
+  // with no scan yet, and 0 is not nullish, so it would swallow the
+  // discovered count. Only a scanned total above 0 wins.
+  const total = stats?.total ? stats.total : (discoveredTotal ?? 0);
 
   const [targetMode, setTargetMode] = useState(settings.target_ratio !== null);
   const [ratio, setRatio] = useState(settings.target_ratio ?? DEFAULT_RATIO);
