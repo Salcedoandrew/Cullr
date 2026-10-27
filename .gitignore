@@ -25,6 +25,8 @@ assets/icon-1024.png
 
 # Local catalogs
 .cullr/
+# Calibration scratch (scripts/calibrate_selection_stops.py)
+.calibration/
 *.db
 *.db-wal
 *.db-shm

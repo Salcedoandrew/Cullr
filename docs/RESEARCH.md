@@ -376,6 +376,32 @@ a single pixel of Gaussian blur, while its face crop falls 510 → 136 → 33 fo
 one threshold holds across cameras. Photos without faces rely on the group
 comparison plus the frame floor.
 
+**Why a stop is not just gate scaling** (measured 2026-10-27 on a real
+5,745-frame wedding, `scripts/calibrate_selection_stops.py`). Scaling the gates
+across the whole 0–100 range moved the shoot's keeper count from 21.6 % to
+18.4 % — a slider a photographer could not feel. The reason is structural: two
+thirds of the rejections are best-of-group demotions, which no gate touches, so
+a looser stop's extra survivors simply become duplicates inside groups that
+already keep a frame. What a stop must move is the number of *groups that keep
+anything*, so each named stop also keeps only a share of the frames that passed
+the gates, ranked by composite quality (Auto Target mode only — Cull to Target
+sets its own count). The shares are calibrated against the photographer's own
+selection on that shoot (804 frames, 14.0 %):
+
+| Stop | gates | keeps | frames | picks whose moment survives |
+| --- | --- | --- | --- | --- |
+| EXTREME | 85 | strongest 25 % | 288 (5.0 %) | 351 / 804 (43.7 %) |
+| FEW | 60 | strongest 45 % | 532 (9.3 %) | 521 / 804 (64.8 %) |
+| STANDARD | 35 | strongest 70 % | 847 (14.7 %) | 680 / 804 (84.6 %) |
+| MORE | 15 | everything that passes | 1,233 (21.5 %) | 780 / 804 (97.0 %) |
+
+STANDARD — the Wedding default's own gate value — lands on the 14 % that
+photographer kept by hand, which is the anchor the scale was missing. The table
+also states the cost honestly: a tighter stop matches his *count*, not his
+taste. 94 of STANDARD's 847 keepers are frames he picked; the rest of his picks
+survive only as a different frame from the same group. Closing that gap is the
+learned ranker's job (§6), not a tighter threshold's.
+
 ### 4.5 Best-of-group
 
 ```

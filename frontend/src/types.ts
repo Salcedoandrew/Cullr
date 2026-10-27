@@ -4,6 +4,9 @@ export type Reason =
   | "underexposed"
   | "closed_eyes"
   | "duplicate"
+  // Both count controls: the cull-to-target cap and the Auto Target stop's trim.
+  // The backend has emitted it all along (and `reasonLabel` already names it).
+  | "target"
   | "unreadable"
   | null;
 

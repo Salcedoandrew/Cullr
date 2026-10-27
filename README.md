@@ -120,8 +120,14 @@ port that closes with the window.
 * **Auto Target** — keeps every frame that passes the quality gates. It answers
   "is this frame acceptable?", and *Set selection strictness* picks how picky:
   **EXTREME / FEW / STANDARD / MORE**, named stops rather than a raw 0–100.
-  Untouched, it follows the preset.
-* **Cull to Target** — instead answers "how many frames do I want?". Name
+  A stop also trims to a share of the frames that passed the gates, ranked by
+  composite quality, because the gates alone cannot move a shoot's keeper count
+  — they admit a frame, and best-of-group then demotes most of it. Measured on a
+  5,745-frame wedding: EXTREME 288 kept (5.0 %), FEW 532 (9.3 %), STANDARD 847
+  (14.7 %, the rate that photographer kept by hand), MORE 1,233 (21.5 %,
+  everything that passes). Untouched, a shoot follows the preset, as before.
+* **Cull to Target** — instead answers "how many frames do I want?" and stands
+  the stop's trim down, so the ratio is the only count control. Name
   a percentage with the 10–60 % slider (live `≈14 % of 5,745 photos` readout) or
   type the exact count (804); keepers are ranked by composite quality and cut at
   the target, and the frames that lose are rejected as `Over target` rather than

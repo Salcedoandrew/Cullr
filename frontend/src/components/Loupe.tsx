@@ -24,6 +24,10 @@ function explain(photo: Photo): string {
       return "Highlights on the subject are clipped.";
     case "underexposed":
       return "The subject is too dark to recover.";
+    case "target":
+      // Both count controls land here: the cull-to-target cap and the Auto
+      // Target stop's trim. The frame passed the gates and ranked below the cut.
+      return "It passed the gates and ranked below the cut: more frames survived than the count or selection strictness you asked for.";
     case "unreadable":
       return photo.error ?? "The file could not be decoded.";
     default:
