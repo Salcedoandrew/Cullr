@@ -177,6 +177,10 @@ export function CullDialog({
     settings.rating_scheme ?? capabilities.default_settings.rating_scheme,
   );
   const [reExport, setReExport] = useState(false);
+  // The target helper doubles as a callout while the slider is held, the way
+  // Aftershoot shows it; releasing returns it to the always-on block so the
+  // copy is never hidden.
+  const [draggingTarget, setDraggingTarget] = useState(false);
   const goBack = () => (view === "ratings" ? setView("main") : onClose());
   const dialog = useRef<HTMLDivElement>(null);
 
@@ -493,6 +497,12 @@ export function CullDialog({
                 aria-valuetext={total > 0 ? `${percent}% of ${total} photos` : `${percent}%`}
                 style={{ ["--fill" as string]: `${handleOffset}%` }}
                 onChange={(event) => setTarget(Number(event.target.value) / 100)}
+                onPointerDown={() => setDraggingTarget(true)}
+                onPointerUp={() => setDraggingTarget(false)}
+                onPointerCancel={() => setDraggingTarget(false)}
+                onKeyDown={() => setDraggingTarget(true)}
+                onKeyUp={() => setDraggingTarget(false)}
+                onBlur={() => setDraggingTarget(false)}
               />
               <output
                 className="cull__bubble"
@@ -506,13 +516,17 @@ export function CullDialog({
               <span>{MAX_PERCENT}%</span>
             </div>
 
-            <p className="cull__help">
-              <span className="cull__help-icon"><InfoDot /></span>
-              {targetMode
-                ? helper
-                : "Auto Target keeps every frame that passes the quality gates — sharp, "
-                  + "open eyes, one per burst. Pick Cull to Target to also cap the count."}
-            </p>
+            {targetMode && draggingTarget ? (
+              <output className="cull__callout">{helper}</output>
+            ) : (
+              <p className="cull__help">
+                <span className="cull__help-icon"><InfoDot /></span>
+                {targetMode
+                  ? helper
+                  : "Auto Target keeps every frame that passes the quality gates — sharp, "
+                    + "open eyes, one per burst. Pick Cull to Target to also cap the count."}
+              </p>
+            )}
           </div>
         </section>
 

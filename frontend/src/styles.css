@@ -2374,6 +2374,32 @@ kbd {
   color: #8e8e93;
 }
 
+.cull__callout {
+  position: relative;
+  display: block;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: #f2f2f4;
+  color: #1c1c1e;
+  font-size: 12.5px;
+  line-height: 1.4;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* The little caret pointing back at the thumb. */
+.cull__callout::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  left: 22px;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: #f2f2f4;
+  transform: rotate(45deg);
+}
+
 .cull__help {
   display: flex;
   align-items: flex-start;

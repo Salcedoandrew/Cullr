@@ -284,6 +284,35 @@ describe("the Auto Target selection strictness", () => {
   });
 });
 
+describe("the target slider callout", () => {
+  it("shows the helper as a callout while held, and returns it afterwards", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
+
+    const slider = within(dialog).getByLabelText("Target percentage");
+    const staticHelp = dialog.querySelector(".cull__help")?.textContent ?? "";
+    expect(staticHelp).toMatch(/target/i);
+    expect(dialog.querySelector(".cull__callout")).toBeNull();
+
+    fireEvent.pointerDown(slider);
+    const callout = dialog.querySelector(".cull__callout");
+    expect(callout).toBeTruthy();
+    // Same copy, only the presentation changes.
+    expect(callout?.textContent).toBe(staticHelp);
+
+    fireEvent.pointerUp(slider);
+    expect(dialog.querySelector(".cull__callout")).toBeNull();
+    expect(dialog.querySelector(".cull__help")).toBeTruthy();
+  });
+});
+
 describe("the Stars & Colors panel", () => {
   it("edits the scheme in place and the main row reads it back", async () => {
     api.libraries.mockResolvedValue([library({ id: 1 })]);
