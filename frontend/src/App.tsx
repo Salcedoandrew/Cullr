@@ -169,6 +169,22 @@ export default function App() {
     [],
   );
 
+  /** Count the photos an import set holds, for the cull options to show before
+   *  any scan has run. A names-only walk on the server; null when the count
+   *  cannot be taken, so a failed count never blocks the dialog — it falls
+   *  back to the percent-only display. */
+  const countImportSet = useCallback(
+    async (libraryId: number): Promise<number | null> => {
+      try {
+        const found = await api.discover(libraryId);
+        return found.total;
+      } catch {
+        return null;
+      }
+    },
+    [],
+  );
+
   const openFolder = useCallback(
     async (path: string, options?: ImportOptions) => {
       try {
@@ -189,14 +205,8 @@ export default function App() {
         // leak into the cull options before it lands.
         setStats(null);
         // Count the import set first, so the cull options show the real
-        // total instead of 0. Discovery is a names-only walk; if it fails
-        // the dialog still opens and falls back to the percent-only display.
-        try {
-          const found = await api.discover(created.id);
-          setDiscoveredTotal(found.total);
-        } catch {
-          setDiscoveredTotal(null);
-        }
+        // total instead of 0.
+        setDiscoveredTotal(await countImportSet(created.id));
         // No auto-cull: the cull options open first, and the job starts only
         // when the user presses Start Cull in that window.
         setCullOpen(true);
@@ -205,7 +215,30 @@ export default function App() {
         throw event;
       }
     },
-    [capabilities, startScan],
+    [capabilities, startScan, countImportSet],
+  );
+
+  /** Open a library from Recent folders. Its cull options need a total before
+   *  the first scan, so a library that has never been scanned is counted here
+   *  the way an import counts one — the same names-only walk, which honours
+   *  the stored import options and falls back to the working copy when the
+   *  source folder is gone. A library that already has a scan takes its total
+   *  from stats, which the photo list refresh brings in. */
+  const openRecent = useCallback(
+    async (chosen: Library) => {
+      setLibrary(chosen);
+      setFilter("all");
+      setPersonId(null);
+      // The shoot before this one must not leak its total into the cull
+      // options while this library's photo list loads.
+      setStats(null);
+      if (chosen.photo_count) {
+        setDiscoveredTotal(null);
+        return;
+      }
+      setDiscoveredTotal(await countImportSet(chosen.id));
+    },
+    [countImportSet],
   );
 
   const decide = useCallback(
@@ -362,12 +395,7 @@ export default function App() {
         error={error}
         lastParent={libraries[0] ? parentOf(libraries[0].root_path) : undefined}
         onOpen={openFolder}
-        onSelect={(chosen) => {
-          setLibrary(chosen);
-          setFilter("all");
-          setPersonId(null);
-          setDiscoveredTotal(null);
-        }}
+        onSelect={(chosen) => void openRecent(chosen)}
       />
     );
   }
