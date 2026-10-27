@@ -76,6 +76,9 @@ class AnalysedPhoto:
             "contrast": tech.contrast if tech else None,
             "subject_sharpness": tech.subject_sharpness if tech else None,
             "bg_separation": tech.bg_separation if tech else None,
+            "bimodality": tech.bimodality if tech else None,
+            "shadow_clipped": int(tech.shadow_clipped) if tech else None,
+            "highlight_clipped": int(tech.highlight_clipped) if tech else None,
             "face_count": faces.count,
             "eyes_open": faces.eyes_open,
             "worst_eyes_open": faces.worst_eyes_open,
@@ -612,6 +615,9 @@ def _from_row(row: dict, faces: list[dict]) -> AnalysedPhoto:
         # which drops the axis instead of scoring it as 0.
         subject_sharpness=row.get("subject_sharpness"),
         bg_separation=row.get("bg_separation"),
+        bimodality=row.get("bimodality") or 0.0,
+        shadow_clipped=bool(row.get("shadow_clipped")),
+        highlight_clipped=bool(row.get("highlight_clipped")),
     )
     face_objs = [
         Face(

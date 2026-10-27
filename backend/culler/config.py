@@ -40,9 +40,12 @@ def resource_path(*parts: str) -> Path:
 ANALYSIS_LONG_EDGE = 1600
 THUMB_LONG_EDGE = 512
 # 1: technical + face metrics. 2: per-face identity descriptors (people
-# clustering) are part of analysis. 3: subject-region sharpness, which the
-# ranking axis reads back from the stored row — a row analysed before it existed
-# would score differently from a fresh analysis, so it is re-analysed once.
+# clustering) are part of analysis. 3: the metrics the new ranking axes read
+# back from the stored row — subject-region sharpness, background separation,
+# histogram bimodality, the shadow/highlight masses and the colour-histogram
+# entropy. A row analysed before they existed would score differently from a
+# fresh analysis, so version 2 rows are re-analysed once. Bumped as one step
+# because all of it ships together; there are no version-3 rows in the wild.
 ANALYSIS_VERSION = 3
 
 IMAGE_EXTENSIONS = {

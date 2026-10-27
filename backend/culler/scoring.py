@@ -102,6 +102,12 @@ def exposure_axis(tech: TechnicalMetrics, faces: FaceMetrics | None = None) -> f
     penalty += max(0.0, clip_lo - 0.05) * 2.0
     deviation = abs(mean_luma - 0.5)
     penalty += max(0.0, deviation - 0.22) * 1.4
+    # A harsh two-peak histogram (blown sky over crushed shadows) can clip
+    # nothing by the fractions above and still be unusable. facet charges 0.6
+    # per unit of bimodality above 1.0 on its 0..10 axis; this axis is 0..1, so
+    # the same term is 0.06. A smooth frame sits at or below 1.0 and pays
+    # nothing. Ranker only: no rejection reason is added for it.
+    penalty += max(0.0, tech.bimodality - 1.0) * 0.06
     return float(max(0.0, min(1.0, 1.0 - penalty)))
 
 

@@ -84,6 +84,42 @@ def test_facet_subject_score_is_the_sqrt_over_seven_normalisation():
     assert subject_sharpness_score(1225.0) == 5.0
     assert subject_sharpness_score(4900.0) == 10.0
     assert subject_sharpness_score(1e6) == 10.0
+def test_bimodality_separates_two_peaks_from_one():
+    """facet's ``-kurtosis(hist)``: ~0 unimodal, 2.0 for two equal peaks.
+
+    Measured on the synthetic frames below: two equal masses at 30 and 220 read
+    2.0, a broad gradient 30..220 reads 1.2, and a normal-ish frame ~0. facet's
+    threshold of 1.0 sits between the first two.
+    """
+    two_peak = np.zeros((400, 600, 3), dtype=np.uint8)
+    two_peak[:, :300] = 30
+    two_peak[:, 300:] = 220
+    ramp = np.tile(np.linspace(30, 220, 600, dtype=np.uint8), (400, 1))
+    gradient = np.dstack([ramp] * 3)
+
+    harsh = analyse(two_peak)
+    smooth = analyse(gradient)
+    assert harsh.bimodality > 1.5
+    assert smooth.bimodality < 1.5
+    assert harsh.bimodality > smooth.bimodality + 0.5
+    # The point of the metric: neither frame clips by the existing definition.
+    assert harsh.clip_hi == 0.0 and harsh.clip_lo == 0.0
+
+
+def test_shadow_and_highlight_flags_are_not_the_clipping_fractions():
+    shadowed = np.full((400, 600, 3), 128, dtype=np.uint8)
+    shadowed[:, :240] = 10       # 40 % deep shadow, none of it at/below 5
+    blown = np.full((400, 600, 3), 128, dtype=np.uint8)
+    blown[:, :120] = 240         # 20 % bright, none of it at/above 250
+
+    assert analyse(shadowed).shadow_clipped is True
+    assert analyse(shadowed).highlight_clipped is False
+    assert analyse(blown).highlight_clipped is True
+    assert analyse(blown).shadow_clipped is False
+
+    neutral = analyse(np.full((400, 600, 3), 128, dtype=np.uint8))
+    assert neutral.shadow_clipped is False
+    assert neutral.highlight_clipped is False
 
 
 def test_metrics_are_finite_on_flat_image():

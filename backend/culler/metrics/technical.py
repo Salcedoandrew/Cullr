@@ -14,6 +14,11 @@ Design notes
 * Exposure is measured from the luma histogram: clipping fractions plus mean
   luminance. Silhouette / low-key frames are handled by the gate in
   ``scoring.py`` rather than here, since that decision needs the face boxes.
+* A two-peak histogram (blown sky above crushed shadows) can clip nothing by
+  those fractions and still be unusable, so the histogram's shape is measured
+  too: ``bimodality`` is facet's ``-excess_kurtosis``, and ``shadow_clipped`` /
+  ``highlight_clipped`` flag masses that the strict clip fractions miss.
+  Ported from facet `analyzers/technical.py`; see NOTICE.md.
 * Noise uses Immerkaer's fast estimator on a centre crop, so vignetting and
   border artefacts do not dominate.
 * Subject sharpness stands in for facet's saliency mask without a 2.4 GB
@@ -52,6 +57,11 @@ class TechnicalMetrics:
     # optional.
     subject_sharpness: float | None = None
     bg_separation: float | None = None   # min(10, centre/frame variance * 2)
+    # facet's histogram shape: ~0 unimodal, ~2 for two equal peaks.
+    bimodality: float = 0.0
+    # Masses the strict clip fractions miss (see SHADOW_MASS / HIGHLIGHT_MASS).
+    shadow_clipped: bool = False
+    highlight_clipped: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -69,6 +79,9 @@ class TechnicalMetrics:
                                      else round(subject_sharpness_score(self.subject_sharpness), 3)),
             "bg_separation": (None if self.bg_separation is None
                               else round(self.bg_separation, 3)),
+            "bimodality": round(self.bimodality, 4),
+            "shadow_clipped": self.shadow_clipped,
+            "highlight_clipped": self.highlight_clipped,
         }
 
 
@@ -141,6 +154,38 @@ def immerkaer_noise(gray: np.ndarray, min_side: int = 128) -> float:
     return float(np.sqrt(np.pi / 2.0) * np.mean(np.abs(conv)) / 6.0)
 
 
+# Masses facet treats as visibly crushed / blown: below 30 and above 225 of
+# the 0..255 luma range, at 15 % / 10 % of the frame. Stricter than cullr's
+# clip fractions (5 / 250) on purpose -- these are flags for the photographer,
+# not rejection gates.
+SHADOW_MASS = 0.15
+HIGHLIGHT_MASS = 0.10
+SHADOW_LEVEL = 30
+HIGHLIGHT_LEVEL = 225
+
+
+def histogram_bimodality(hist: np.ndarray) -> float:
+    """Two-peak-ness of a luma histogram, as facet measures it.
+
+    Ported from facet `analyzers/technical.py` (`get_histogram_data`):
+    ``-excess_kurtosis(histogram)``. A smooth unimodal frame reads ~0 (negative
+    for a heavy-tailed one) and two separated peaks read ~2, so 1.0 separates
+    them. Uses the normalised histogram already in hand, so it costs no extra
+    pass over the frame.
+    """
+    mass = float(hist.sum())
+    if mass <= 0:
+        return 0.0
+    values = np.arange(hist.size, dtype=np.float64)
+    p = hist / mass
+    mean = float(np.dot(values, p))
+    var = float(np.dot((values - mean) ** 2, p))
+    if var <= 1e-9:
+        return 0.0
+    fourth = float(np.dot((values - mean) ** 4, p))
+    return float(3.0 - fourth / (var * var))
+
+
 def analyse(bgr: np.ndarray) -> TechnicalMetrics:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
     total = float(gray.size) or 1.0
@@ -148,6 +193,8 @@ def analyse(bgr: np.ndarray) -> TechnicalMetrics:
     hist = np.bincount(gray.ravel(), minlength=256).astype(np.float64) / total
     clip_hi = float(hist[250:].sum())
     clip_lo = float(hist[:6].sum())
+    shadow_mass = float(hist[:SHADOW_LEVEL].sum())
+    highlight_mass = float(hist[HIGHLIGHT_LEVEL + 1:].sum())
     mean_luma = float(np.dot(np.arange(256), hist) / 255.0)
     cdf = np.cumsum(hist)
     p95 = float(np.searchsorted(cdf, 0.95)) / 255.0
@@ -163,4 +210,7 @@ def analyse(bgr: np.ndarray) -> TechnicalMetrics:
         contrast=contrast,
         subject_sharpness=subject,
         bg_separation=separation,
+        bimodality=histogram_bimodality(hist),
+        shadow_clipped=shadow_mass > SHADOW_MASS,
+        highlight_clipped=highlight_mass > HIGHLIGHT_MASS,
     )

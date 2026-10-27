@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS photos (
     sharpness REAL, tenengrad REAL, clip_hi REAL, clip_lo REAL,
     mean_luma REAL, noise REAL, contrast REAL,
     subject_sharpness REAL, bg_separation REAL,
+    bimodality REAL, shadow_clipped INTEGER, highlight_clipped INTEGER,
     face_count INTEGER DEFAULT 0,
     eyes_open REAL, worst_eyes_open REAL, blink INTEGER DEFAULT 0,
     smile REAL, face_sharpness REAL, frontal REAL, face_ratio REAL,
@@ -167,9 +168,11 @@ class Store:
         photos = {row["name"] for row in conn.execute("PRAGMA table_info(photos)")}
         if "covered_person" not in photos:
             conn.execute("ALTER TABLE photos ADD COLUMN covered_person INTEGER")
-        for column in ("subject_sharpness", "bg_separation"):
+        for column, kind in (("subject_sharpness", "REAL"), ("bg_separation", "REAL"),
+                             ("bimodality", "REAL"), ("shadow_clipped", "INTEGER"),
+                             ("highlight_clipped", "INTEGER")):
             if column not in photos:
-                conn.execute(f"ALTER TABLE photos ADD COLUMN {column} REAL")
+                conn.execute(f"ALTER TABLE photos ADD COLUMN {column} {kind}")
         people = {row["name"] for row in conn.execute("PRAGMA table_info(persons)")}
         if "required" not in people:
             conn.execute("ALTER TABLE persons ADD COLUMN required INTEGER NOT NULL DEFAULT 0")
@@ -340,7 +343,8 @@ class Store:
             "width", "height", "captured_at", "camera", "lens", "iso", "shutter",
             "aperture", "focal_len", "sharpness", "tenengrad", "clip_hi", "clip_lo",
             "mean_luma", "noise", "contrast", "subject_sharpness",
-            "bg_separation", "face_count", "eyes_open",
+            "bg_separation", "bimodality", "shadow_clipped",
+            "highlight_clipped", "face_count", "eyes_open",
             "worst_eyes_open", "blink", "smile", "face_sharpness", "frontal",
             "face_ratio", "phash", "dhash", "error",
         ]
@@ -372,7 +376,8 @@ class Store:
             rows = conn.execute(
                 "SELECT id, path, filename, captured_at, phash, dhash, sharpness, "
                 "tenengrad, clip_hi, clip_lo, mean_luma, noise, contrast, "
-                "subject_sharpness, bg_separation, "
+                "subject_sharpness, bg_separation, bimodality, shadow_clipped, "
+                "highlight_clipped, "
                 "face_count, eyes_open, worst_eyes_open, smile, face_sharpness, "
                 "frontal, face_ratio, error, analysis_version, content_key "
                 "FROM photos WHERE library_id = ? ORDER BY path", (library_id,)
@@ -761,6 +766,9 @@ def serialize_photo(row: dict, faces: list[dict] | None = None) -> dict:
         "exposure": row.get("mean_luma"),
         "clip_hi": row.get("clip_hi"),
         "clip_lo": row.get("clip_lo"),
+        "bimodality": row.get("bimodality"),
+        "shadow_clipped": bool(row.get("shadow_clipped")),
+        "highlight_clipped": bool(row.get("highlight_clipped")),
         "noise": row.get("noise"),
         "face_count": row.get("face_count") or 0,
         "eyes_open": row.get("worst_eyes_open"),

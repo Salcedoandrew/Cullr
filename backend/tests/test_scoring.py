@@ -3,15 +3,15 @@ from __future__ import annotations
 from culler.config import CullingSettings
 from culler.metrics.faces import Face, FaceMetrics
 from culler.metrics.technical import TechnicalMetrics
-from culler.scoring import composite, score_photo, technical_reason
+from culler.scoring import composite, exposure_axis, score_photo, technical_reason
 
 
 def tech(sharp=120.0, clip_hi=0.0, clip_lo=0.02, mean=0.5, noise=4.0,
-         contrast=60.0, subject=None) -> TechnicalMetrics:
+         contrast=60.0, subject=None, bimodality=0.0) -> TechnicalMetrics:
     return TechnicalMetrics(
         sharpness=sharp, tenengrad=sharp * 60, clip_hi=clip_hi, clip_lo=clip_lo,
         mean_luma=mean, p95_luma=0.9, noise=noise, contrast=contrast,
-        subject_sharpness=subject,
+        subject_sharpness=subject, bimodality=bimodality,
     )
 
 
@@ -202,6 +202,19 @@ def test_subject_sharpness_never_rejects_on_its_own():
     settings = CullingSettings()
     soft_subject = tech(sharp=60.0, subject=1.0)
     assert technical_reason(soft_subject, face_metrics(), gate(settings), settings) is None
+
+
+def test_exposure_axis_penalises_a_two_peak_histogram():
+    smooth = tech(mean=0.49, bimodality=0.0)
+    harsh = tech(mean=0.49, bimodality=2.0)
+    assert exposure_axis(smooth) == 1.0
+    assert exposure_axis(harsh) < exposure_axis(smooth) - 0.05
+
+
+def test_bimodality_never_becomes_a_rejection_reason():
+    settings = CullingSettings()
+    harsh = tech(mean=0.49, bimodality=3.0)
+    assert technical_reason(harsh, face_metrics(), gate(settings), settings) is None
 
 
 def test_quality_is_bounded():
