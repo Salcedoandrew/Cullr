@@ -135,6 +135,16 @@ def subject_sharpness_axis(tech: TechnicalMetrics, faces: FaceMetrics) -> float 
     return _log_norm(tech.subject_sharpness, SUBJECT_SHARPNESS_LO, SUBJECT_SHARPNESS_HI)
 
 
+def color_axis(tech: TechnicalMetrics) -> float:
+    """Palette variety, facet's 0..10 harmony mapped onto the 0..1 axes.
+
+    Deliberately the smallest weight in the presets: a clean minimal portrait
+    has little hue variety and must not be punished for it, so this only ever
+    separates best-of-group near-ties. Never a rejection reason.
+    """
+    return float(max(0.0, min(1.0, tech.color_harmony / 10.0)))
+
+
 def eyes_axis(faces: FaceMetrics) -> float | None:
     value = faces.worst_eyes_open
     if value is None:
@@ -158,6 +168,7 @@ def build_axes(tech: TechnicalMetrics, faces: FaceMetrics) -> dict[str, float | 
         "exposure": exposure_axis(tech, faces),
         "noise": noise_axis(tech),
         "contrast": contrast_axis(tech),
+        "color": color_axis(tech),
         "eyes_open": eyes_axis(faces),
         "face_sharpness": face_sharpness_axis(faces.face_sharpness),
         "subject": subject_axis(faces),

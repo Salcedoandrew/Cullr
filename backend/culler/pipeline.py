@@ -79,6 +79,7 @@ class AnalysedPhoto:
             "bimodality": tech.bimodality if tech else None,
             "shadow_clipped": int(tech.shadow_clipped) if tech else None,
             "highlight_clipped": int(tech.highlight_clipped) if tech else None,
+            "color_harmony": tech.color_harmony if tech else None,
             "face_count": faces.count,
             "eyes_open": faces.eyes_open,
             "worst_eyes_open": faces.worst_eyes_open,
@@ -618,6 +619,7 @@ def _from_row(row: dict, faces: list[dict]) -> AnalysedPhoto:
         bimodality=row.get("bimodality") or 0.0,
         shadow_clipped=bool(row.get("shadow_clipped")),
         highlight_clipped=bool(row.get("highlight_clipped")),
+        color_harmony=row.get("color_harmony") or 0.0,
     )
     face_objs = [
         Face(

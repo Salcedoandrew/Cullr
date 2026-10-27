@@ -7,11 +7,12 @@ from culler.scoring import composite, exposure_axis, score_photo, technical_reas
 
 
 def tech(sharp=120.0, clip_hi=0.0, clip_lo=0.02, mean=0.5, noise=4.0,
-         contrast=60.0, subject=None, bimodality=0.0) -> TechnicalMetrics:
+         contrast=60.0, subject=None, bimodality=0.0,
+         color=0.0) -> TechnicalMetrics:
     return TechnicalMetrics(
         sharpness=sharp, tenengrad=sharp * 60, clip_hi=clip_hi, clip_lo=clip_lo,
         mean_luma=mean, p95_luma=0.9, noise=noise, contrast=contrast,
-        subject_sharpness=subject, bimodality=bimodality,
+        subject_sharpness=subject, bimodality=bimodality, color_harmony=color,
     )
 
 
@@ -215,6 +216,27 @@ def test_bimodality_never_becomes_a_rejection_reason():
     settings = CullingSettings()
     harsh = tech(mean=0.49, bimodality=3.0)
     assert technical_reason(harsh, face_metrics(), gate(settings), settings) is None
+
+
+def test_colour_axis_ranks_but_never_rejects():
+    settings = CullingSettings(preset="portrait")
+    faces = face_metrics(eyes=9.0, sharpness=400)
+    plain = score_photo(tech(color=0.2), faces, settings)
+    vivid = score_photo(tech(color=9.5), faces, settings)
+    assert vivid.axes["color"] > plain.axes["color"]
+    assert technical_reason(tech(color=0.2), faces, gate(settings), settings) is None
+
+
+def test_colour_weight_is_small_enough_not_to_punish_simplicity():
+    # A minimal near-grey portrait is *supposed* to have low hue variety: the
+    # axis is a tie-break, so its whole range is worth less than 0.05 quality.
+    settings = CullingSettings(preset="portrait")
+    faces = face_metrics(eyes=9.0, sharpness=400)
+    plain = score_photo(tech(color=0.2), faces, settings)
+    vivid = score_photo(tech(color=9.5), faces, settings)
+    assert vivid.quality > plain.quality
+    assert vivid.quality - plain.quality < 0.05
+    assert plain.verdict == "keep"
 
 
 def test_quality_is_bounded():

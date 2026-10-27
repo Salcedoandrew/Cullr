@@ -27,6 +27,9 @@ Design notes
   window in ``scoring.py``) and in facet's 0..10 normalisation. Ported from
   facet `models/saliency_scorer.py` (MIT): `subject_sharpness`,
   `bg_separation`. See NOTICE.md.
+* Colour is measured as the entropy of a hue x saturation histogram (facet's
+  ``get_color_harmony``): it says how varied the palette is, not whether it is
+  good, so ``scoring.py`` gives it a small tie-break weight and never a gate.
 """
 
 from __future__ import annotations
@@ -62,6 +65,8 @@ class TechnicalMetrics:
     # Masses the strict clip fractions miss (see SHADOW_MASS / HIGHLIGHT_MASS).
     shadow_clipped: bool = False
     highlight_clipped: bool = False
+    # facet's colour scale: HSV-histogram entropy, 0 (one flat colour) to 10.
+    color_harmony: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -82,6 +87,7 @@ class TechnicalMetrics:
             "bimodality": round(self.bimodality, 4),
             "shadow_clipped": self.shadow_clipped,
             "highlight_clipped": self.highlight_clipped,
+            "color_harmony": round(self.color_harmony, 3),
         }
 
 
@@ -186,6 +192,37 @@ def histogram_bimodality(hist: np.ndarray) -> float:
     return float(3.0 - fourth / (var * var))
 
 
+_HUE_BINS = 180
+_SAT_BINS = 256
+# Shannon entropy of a 180 x 256 histogram cannot exceed this many bits, which
+# is the divisor that puts facet's colour score on a 0..10 scale.
+_MAX_COLOR_ENTROPY = float(np.log2(_HUE_BINS * _SAT_BINS))
+
+
+def color_harmony(bgr: np.ndarray) -> float:
+    """Hue/saturation variety on facet's 0..10 scale.
+
+    Ported from facet `analyzers/technical.py` (`get_color_harmony`): the
+    entropy of a 180 x 256 hue/saturation histogram, scaled so the maximum
+    (log2(46080) = 15.49 bits) reads 10. A flat grey frame reads 0, a full hue
+    ramp 4.8, and 40 real frames measured 0.80-7.39 with a median of 6.75.
+
+    Entropy is not taste: a minimal portrait is *supposed* to be low, which is
+    why this feeds a small tie-break weight rather than a gate.
+    """
+    if bgr.ndim != 3:
+        return 0.0
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, [_HUE_BINS, _SAT_BINS],
+                        [0, _HUE_BINS, 0, _SAT_BINS]).ravel()
+    total = float(hist.sum())
+    if total <= 0:
+        return 0.0
+    occupied = hist[hist > 0] / total
+    bits = float(-(occupied * np.log2(occupied)).sum())
+    return float(min(10.0, bits / _MAX_COLOR_ENTROPY * 10.0))
+
+
 def analyse(bgr: np.ndarray) -> TechnicalMetrics:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) if bgr.ndim == 3 else bgr
     total = float(gray.size) or 1.0
@@ -213,4 +250,5 @@ def analyse(bgr: np.ndarray) -> TechnicalMetrics:
         bimodality=histogram_bimodality(hist),
         shadow_clipped=shadow_mass > SHADOW_MASS,
         highlight_clipped=highlight_mass > HIGHLIGHT_MASS,
+        color_harmony=color_harmony(bgr),
     )

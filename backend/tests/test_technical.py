@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 from culler.metrics.technical import (
@@ -84,6 +85,8 @@ def test_facet_subject_score_is_the_sqrt_over_seven_normalisation():
     assert subject_sharpness_score(1225.0) == 5.0
     assert subject_sharpness_score(4900.0) == 10.0
     assert subject_sharpness_score(1e6) == 10.0
+
+
 def test_bimodality_separates_two_peaks_from_one():
     """facet's ``-kurtosis(hist)``: ~0 unimodal, 2.0 for two equal peaks.
 
@@ -120,6 +123,27 @@ def test_shadow_and_highlight_flags_are_not_the_clipping_fractions():
     neutral = analyse(np.full((400, 600, 3), 128, dtype=np.uint8))
     assert neutral.shadow_clipped is False
     assert neutral.highlight_clipped is False
+
+
+def test_color_harmony_orders_a_colourful_frame_above_a_grey_one():
+    """facet's HSV-histogram entropy, scaled so the 15.49-bit maximum is 10.
+
+    Measured: 40 real frames read 0.80-7.39 (median 6.75), a flat grey frame
+    0.00, and a full hue ramp 4.83.
+    """
+    grey = np.full((400, 600, 3), 128, dtype=np.uint8)
+    hsv = np.zeros((400, 600, 3), dtype=np.uint8)
+    hsv[..., 0] = np.tile(np.linspace(0, 179, 600, dtype=np.uint8), (400, 1))
+    hsv[..., 1] = 255
+    hsv[..., 2] = 200
+    colourful = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+    assert analyse(grey).color_harmony == 0.0
+    assert analyse(colourful).color_harmony > 4.0
+
+
+def test_color_harmony_stays_on_the_facet_scale(scene):
+    assert 0.0 <= analyse(scene).color_harmony <= 10.0
 
 
 def test_metrics_are_finite_on_flat_image():
