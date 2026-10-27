@@ -266,6 +266,46 @@ def test_resolve_app_path_falls_back_when_the_app_is_translocated(tmp_path):
     assert found == installed
 
 
+def test_read_only_bundles_are_named_rather_than_replaced(tmp_path):
+    """Running from an image, or from macOS's quarantine copy, cannot be
+    replaced in place — and both would quit-then-fail if they were tried."""
+    assert "quarantined" in update.unusable_reason(
+        "/private/var/folders/xy/AppTranslocation/9F-2/d/Cullr.app")
+    assert "disk image" in update.unusable_reason("/Volumes/Cullr 0.9.0/Cullr.app")
+    assert update.unusable_reason("/Applications/Cullr.app") is None
+    assert update.unusable_reason(_fake_bundle(tmp_path / "Somewhere")) is None
+
+
+def test_install_refuses_to_quit_for_a_bundle_it_cannot_replace(tmp_path, monkeypatch):
+    """The refusal has to come before the quit, or the user is left with no app."""
+    payload = b"a disk image"
+    digest = hashlib.sha256(payload).hexdigest()
+
+    def downloader(url, sha, filename, dest_dir, progress, cancel):
+        path = Path(dest_dir) / filename
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+        return path
+
+    monkeypatch.setattr(update, "resolve_app_path", lambda *a, **k: None)
+    monkeypatch.setattr(update, "bundle_of", lambda *a, **k: Path(
+        "/Volumes/Cullr 0.9.0/Cullr.app/Contents/MacOS/Cullr"))
+    monkeypatch.setattr(update.subprocess, "Popen",
+                        lambda *a, **k: pytest.fail("nothing may be launched"))
+    manager = _manager(tmp_path, fetcher=lambda url: update.validate_manifest(
+        manifest(version="0.10.0", sha256=digest)), downloader=downloader)
+    manager.check()
+    manager.start_download()
+    for _ in range(100):
+        if manager.status()["phase"] != "downloading":
+            break
+        time.sleep(0.05)
+    state = manager.install(on_quit=lambda: pytest.fail("the app must not quit"))
+    assert state["phase"] == "error"
+    assert "disk image" in state["error"]
+    assert "Applications" in state["error"]
+
+
 def test_resolve_app_path_is_none_when_nothing_installed(tmp_path):
     assert update.resolve_app_path(Path(sys.executable),
                                    app_dir=tmp_path / "Applications") is None

@@ -281,9 +281,25 @@ def bundle_of(executable: str | Path | None = None) -> Path | None:
     return None
 
 
-def translocated(path: Path | str) -> bool:
-    """True when macOS is running a quarantined app from its read-only sandbox."""
-    return "/AppTranslocation/" in str(path)
+def unusable_reason(path: Path | str) -> str | None:
+    """Why this bundle cannot be replaced in place, if it cannot.
+
+    Both cases are read-only copies of the app, and both quit-then-fail rather
+    than anything useful, so an update has to decide before it quits:
+
+    * macOS App Translocation — a quarantined app runs from a random path macOS
+      owns, so replacing "itself" there is impossible;
+    * a mounted disk image — Cullr was launched straight out of the ``.dmg``.
+
+    The returned text is user-facing: it names what to do about it.
+    """
+    text = str(path)
+    if "/AppTranslocation/" in text:
+        return ("Cullr is running from the read-only copy macOS makes of a"
+                " quarantined download")
+    if text.startswith("/Volumes/"):
+        return "Cullr is running from a disk image"
+    return None
 
 
 def resolve_app_path(executable: str | Path | None = None,
@@ -291,18 +307,17 @@ def resolve_app_path(executable: str | Path | None = None,
     """Which bundle an update would replace.
 
     Detection walks up from the running executable, so an app kept outside
-    ``/Applications`` updates itself where it actually is. Two cases where that
-    answer is unusable, and ``/Applications/Cullr.app`` is tried instead:
-
-    * a source checkout — there is no bundle to replace;
-    * macOS App Translocation — a quarantined app runs from a random read-only
-      path, so replacing "itself" would fail after the quit.
+    ``/Applications`` updates itself where it actually is. When that answer
+    cannot be replaced (:func:`unusable_reason`) or there is no bundle at all
+    (a source checkout), the standard install location is tried instead — which
+    is the right answer for an app run from a disk image, since the copy in
+    Applications is the one being kept up to date.
 
     Returns None when neither answer exists; the caller reports that instead of
     installing somewhere unexpected.
     """
     found = bundle_of(executable)
-    if found is not None and not translocated(found):
+    if found is not None and unusable_reason(found) is None:
         return found
     standard = Path(app_dir) / f"{APP_NAME}.app"
     return standard if standard.is_dir() else None
@@ -608,6 +623,11 @@ class UpdateManager:
             return self._fail("there is no verified download to install")
         target = self.app_path()
         if target is None:
+            running = bundle_of()
+            reason = unusable_reason(running) if running is not None else None
+            if reason:
+                return self._fail(f"{reason}; move it into Applications and update "
+                                  f"from there")
             return self._fail(
                 "could not work out which installed copy of Cullr to replace; "
                 "move Cullr into Applications and try again")
