@@ -75,7 +75,9 @@ port that closes with the window.
 * **Finder-style folder picker** — places sidebar (recents, favourites, network
   shares, volumes), an icon or list browser with real thumbnails, item counts
   and image dimensions, a breadcrumb menu, search, and **New Folder**; styled
-  with the system's materials rather than the app's palette.
+  with the system's materials rather than the app's palette. The browser sends a
+  screenful at a time, but **search covers the whole folder**, so a destination
+  is findable in a shoot of thousands of files.
 * **Recent folders** — the shoots you have opened before, one click to reopen;
   an unscanned shoot reopened this way still shows its photo count in the cull
   options, so the target can be set before the first cull.
@@ -179,7 +181,15 @@ port that closes with the window.
 * **Contact sheet grouped by burst**, with verdict, reason, stars and the person a
   frame was kept for on every tile.
 * **Filters with live counts** — All frames, Keepers, Rejected, Duplicates, Soft
-  focus, Eyes closed, Exposure, My picks.
+  focus, Eyes closed, Exposure, My picks, and **Unreadable** when frames could
+  not be read, so a broken file is never just an unexplained rejection.
+* **Read failures are stated, not implied** — a scan that cannot read files says
+  so in a banner above the grid, with the count, the real error, and a button
+  into the Unreadable filter; it survives a refresh. A cull that read nothing
+  reports an error rather than "0 keepers", and a broken tile carries its error
+  in the tooltip instead of only in the loupe.
+* **Frames appear as they are analysed** — the grid fills in during a scan and
+  shows the scan's own progress line, instead of claiming no frames match.
 * **Loupe** — face boxes, every measured value per axis, and per-frame overrides.
 * **Keyboard-first** — `J`/`K` or arrows to move, `Space` to loupe, `G` to the next
   group, `X` to reject, `P` or `Enter` to pick, `U` to clear, `1`–`5` to star,
@@ -195,6 +205,10 @@ port that closes with the window.
   system's materials rather than the app's palette.
 * **Remembered per shoot** — each shoot's last export mode and folder are stored in
   the catalog, so the choice follows the shoot rather than one browser.
+* **Says no when there is nothing to say yes to** — "Copy keepers to a folder" is
+  disabled, with the reason, on a shoot that kept nothing, and the destination
+  picker opens at this shoot's remembered folder, the last delivery folder used
+  anywhere, or Home — never inside the shoot you are delivering from.
 
 ### Formats, speed, privacy
 
