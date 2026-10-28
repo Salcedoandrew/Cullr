@@ -26,6 +26,9 @@ datas = [
 binaries = []
 hiddenimports = [
     "webview.platforms.cocoa",
+    # The app menu (Cullr ▸ Check for Updates…) is imported inside a function, so
+    # name it explicitly: without it the window would open with no menu at all.
+    "webview.menu",
     "uvicorn.logging",
     "uvicorn.loops.auto",
     "uvicorn.protocols.http.auto",
