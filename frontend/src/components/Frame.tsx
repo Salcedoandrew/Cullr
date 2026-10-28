@@ -33,6 +33,10 @@ export function Frame({
         : photo.is_lead
           ? `Best of ${groupSize ?? 2}`
           : null);
+  // A broken tile says "Unreadable file" and stops there. The reason is already
+  // on the row -- the loupe reads the same field -- so the tooltip carries it
+  // rather than making the user open the frame to find out why.
+  const title = photo.error ? `${photo.filename} — ${photo.error}` : photo.path;
   const classes = [
     "frame",
     active ? "is-active" : "",
@@ -54,7 +58,7 @@ export function Frame({
         photo.reason ? `, ${reasonLabel(photo.reason)}` : ""
       }`}
       aria-pressed={active}
-      title={photo.path}
+      title={title}
     >
       <span className="frame__image">
         {photo.error ? (

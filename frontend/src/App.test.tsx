@@ -900,3 +900,62 @@ describe("the folder picker's search", () => {
       "Showing the first 400 names — search covers the whole folder.")).toBeTruthy();
   });
 });
+
+describe("a frame the scan could not read", () => {
+  // Block-scoped so the suite keeps one module-level helper per shape.
+  const frame = (filename: string, over: Partial<Photo> = {}): Photo => ({
+    id: 1,
+    filename,
+    path: `/shoots/Katie/${filename}`,
+    width: null,
+    height: null,
+    captured_at: null,
+    camera: null,
+    lens: null,
+    iso: null,
+    shutter: null,
+    aperture: null,
+    focal_len: null,
+    quality: null,
+    verdict: "keep",
+    ai_verdict: null,
+    reason: null,
+    user_decision: null,
+    star: 0,
+    group_id: null,
+    is_lead: false,
+    covered_person: null,
+    sharpness: null,
+    exposure: null,
+    clip_hi: null,
+    clip_lo: null,
+    noise: null,
+    face_count: 0,
+    eyes_open: null,
+    blink: false,
+    error: null,
+    faces: [],
+    ...over,
+  });
+
+  it("names the reason in its tooltip instead of only in the loupe", async () => {
+    const reason = "UnidentifiedImageError: cannot identify image file 'SALR3900.CR3'";
+    const broken = frame("SALR3900.CR3", { id: 1, error: reason, reason: "unreadable",
+                                           verdict: "reject" });
+    const fine = frame("IMG_0002.jpg", { id: 2 });
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: 2 })]);
+    api.photos.mockResolvedValue({
+      photos: [broken, fine], total: 2,
+      stats: { ...statsOf(2), keep: 1, reject: 1 },
+    });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+
+    const tile = await screen.findByRole("button", { name: /SALR3900\.CR3/ });
+    expect(tile.getAttribute("title")).toBe(`SALR3900.CR3 — ${reason}`);
+    // A readable frame still just says where it lives.
+    const good = screen.getByRole("button", { name: /IMG_0002\.jpg/ });
+    expect(good.getAttribute("title")).toBe(fine.path);
+  });
+});
