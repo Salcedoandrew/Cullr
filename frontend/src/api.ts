@@ -71,6 +71,9 @@ export const api = {
   /** Ask a running cull to stop at the next frame boundary. */
   pauseScan: (jobId: number) =>
     request<{ pausing: number }>(`/api/jobs/${jobId}/pause`, { method: "POST" }),
+  /** Stop a running cull for good. What it analysed stays stored. */
+  cancelScan: (jobId: number) =>
+    request<{ cancelling: number }>(`/api/jobs/${jobId}/cancel`, { method: "POST" }),
   /** Continue a paused cull: the frames already analysed are reused. */
   resumeScan: (id: number) =>
     request<Job>(`/api/libraries/${id}/resume`, { method: "POST" }),

@@ -9,10 +9,11 @@ interface Props {
   onExport: () => void;
   onPause: () => void;
   onResume: () => void;
+  onCancel: () => void;
 }
 
 export function TopBar({
-  library, stats, job, busy, onOpenCull, onExport, onPause, onResume,
+  library, stats, job, busy, onOpenCull, onExport, onPause, onResume, onCancel,
 }: Props) {
   const paused = job?.status === "paused";
 
@@ -36,9 +37,14 @@ export function TopBar({
 
       <div className="topbar__actions">
         {busy && (
-          <button type="button" className="button" onClick={onPause}>
-            Pause
-          </button>
+          <>
+            <button type="button" className="button" onClick={onPause}>
+              Pause
+            </button>
+            <button type="button" className="button" onClick={onCancel}>
+              Cancel
+            </button>
+          </>
         )}
         {paused && (
           <button type="button" className="button button--primary" onClick={onResume}>
@@ -62,6 +68,13 @@ export function TopBar({
               ? job.message ?? "Paused"
               : `${job.message ?? job.stage}${job.total > 0 ? ` · ${job.done}/${job.total}` : ""}`}
           </p>
+        </div>
+      )}
+      {job?.status === "cancelled" && (
+        // Say that the cancel landed: a scan that stops on its own without a
+        // word reads like a crash.
+        <div className="progress" role="status" aria-live="polite">
+          <p>{job.message ?? "Cancelled"}</p>
         </div>
       )}
       {job?.status === "error" && <p className="topbar__error">{job.error}</p>}

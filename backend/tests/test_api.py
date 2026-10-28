@@ -159,6 +159,32 @@ def test_second_scan_is_rejected_while_one_is_running(client, photo_dir, monkeyp
     wait_for_scan(client, library_id)
 
 
+def test_a_running_scan_can_be_cancelled(client, photo_dir, monkeypatch):
+    """The button the UI now has: cancel lands as its own terminal state."""
+    import culler.api as api_module
+
+    library = client.post("/api/libraries", json={"path": str(photo_dir)}).json()
+    library_id = library["id"]
+    original = api_module.run_scan
+
+    def slow_scan(*args, **kwargs):
+        time.sleep(0.8)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(api_module, "run_scan", slow_scan)
+
+    job = client.post(f"/api/libraries/{library_id}/scan", json={}).json()
+    assert client.post(f"/api/jobs/{job['id']}/cancel").status_code == 200
+
+    cancelled = wait_for_scan(client, library_id)
+    assert cancelled["status"] == "cancelled"
+    assert cancelled["stage"] == "cancelled"
+    assert cancelled["message"] == "Cancelled"
+    # Nothing to cancel twice, and cancel is not a pause: no resume from here.
+    assert client.post(f"/api/jobs/{job['id']}/cancel").status_code == 409
+    assert client.post(f"/api/jobs/{job['id']}/pause").status_code == 409
+
+
 def test_a_running_scan_can_be_paused_and_then_resumed(client, photo_dir, monkeypatch):
     """Pause leaves a resumable job, and resume finishes it."""
     import culler.api as api_module

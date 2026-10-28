@@ -240,6 +240,13 @@ export default function App() {
     void api.pauseScan(job.id).catch((event) => setError(errorText(event)));
   }, [job]);
 
+  /** Stop the running cull for good. The frames already analysed stay stored,
+   *  so starting again picks up where this left off rather than re-reading it. */
+  const cancelScan = useCallback(() => {
+    if (!job || job.status !== "running") return;
+    void api.cancelScan(job.id).catch((event) => setError(errorText(event)));
+  }, [job]);
+
   /** Continue a paused cull. The scan is resumable by construction — analysed
    *  frames are reused — so the server starts it again and hands back the job
    *  the poll below tracks. */
@@ -503,6 +510,7 @@ export default function App() {
         onExport={() => setExportOpen(true)}
         onPause={pauseScan}
         onResume={resumeScan}
+        onCancel={cancelScan}
       />
 
       <div className="app__body">

@@ -125,10 +125,12 @@ port that closes with the window.
   cutoff; a 0–100 strictness rescales them for the shoot at hand.
 * **Resumable, idempotent scans** — unchanged files are reused, human decisions
   survive a rescan, re-analysis is opt-in, and a running scan can be cancelled.
-* **Pause and resume** — *Pause* stops a running cull at the next frame
+* **Pause, cancel, resume** — *Pause* stops a running cull at the next frame
   boundary and keeps every frame it had already analysed; *Resume* starts it
-  again and only looks at what was left. Nothing is decided off a half-read
-  shoot, so a paused cull never shows a keeper count it has not earned.
+  again and only looks at what was left. *Cancel* ends the scan outright, says
+  so instead of going quiet, and keeps the analysed frames too — starting the
+  cull again picks up from there. Nothing is decided off a half-read shoot, so a
+  paused cull never shows a keeper count it has not earned.
 
 ### Culling
 

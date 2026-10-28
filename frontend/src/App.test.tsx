@@ -29,6 +29,7 @@ const api = vi.hoisted(() => ({
   scan: vi.fn(),
   pauseScan: vi.fn(),
   resumeScan: vi.fn(),
+  cancelScan: vi.fn(),
   latestJob: vi.fn(),
   job: vi.fn(),
   discover: vi.fn(),
@@ -886,6 +887,35 @@ describe("the grid while a scan runs", () => {
 
     await waitFor(() => expect(api.resumeScan).toHaveBeenCalledWith(1));
     expect(await screen.findByRole("button", { name: "Pause" })).toBeTruthy();
+  });
+
+  it("cancels a running cull and says that it landed", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    api.photos.mockResolvedValue({ photos: [], total: 0, stats: statsOf(TOTAL) });
+    const running = jobOf({ status: "running", stage: "analyzing", done: 5,
+                            message: "Analysed 5 of 72 photos" });
+    api.scan.mockResolvedValue(running);
+    api.job.mockResolvedValue(jobOf({ status: "cancelled", stage: "cancelled",
+                                      done: 5, message: "Cancelled" }));
+    api.cancelScan.mockResolvedValue({ cancelling: running.id });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(api.cancelScan).toHaveBeenCalledWith(running.id);
+
+    // The job answers as cancelled: the sheet says so, and neither Pause nor
+    // Cancel is offered for a scan that is no longer running.
+    expect(await screen.findByText("Cancelled")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.queryByRole("progressbar", { name: "Cull progress" })).toBeNull();
   });
 
   it("goes back to no-frames-match once the scan has finished", async () => {
