@@ -393,7 +393,7 @@ have already curated.
 
 ## ✅ Verified behaviour
 
-`cd backend && ../.venv/bin/python -m pytest` — **251 tests**, covering the
+`cd backend && ../.venv/bin/python -m pytest` — **275 tests**, covering the
 metrics, gates, grouping, selection, identity clustering, coverage and the
 confirmable-merge rules, export formats, the HTTP API, full
 scan-then-review-then-export runs on generated shoots, and the update flow —
