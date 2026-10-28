@@ -223,8 +223,9 @@ port that closes with the window.
 
 ### Updates
 
-* **Check for updates, when you ask** — one button in the app (import screen and
-  review footer). It reads a small manifest published with the latest release,
+* **Check for updates, when you ask** — one item in the app menu (Cullr ▸ Check
+  for Updates…) and one button on each screen (import, and the review footer),
+  both opening the same panel. It reads a small manifest published with the latest release,
   compares versions, and shows the new version, its size and a link to the
   release notes *before* anything is downloaded. Nothing is checked on launch,
   nothing is downloaded in the background, and the only host the app will talk

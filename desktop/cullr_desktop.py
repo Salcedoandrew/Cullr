@@ -172,6 +172,41 @@ def _attach_native_drop(window, base_url: str, log: logging.Logger) -> bool:
     return True
 
 
+def _open_update_panel(window, log: logging.Logger) -> None:
+    """Ask the UI to open its Check for Updates panel.
+
+    The panel owns every state the checker can report, so the menu item bridges
+    to it rather than reimplementing anything: an update started from the menu
+    and one started from the footer button are the same code path. pywebview
+    runs a menu action on its own thread, and ``evaluate_js`` is queue-based —
+    the same pattern the drop listener uses. Before the app page has loaded the
+    call is a no-op in JavaScript, not an error.
+    """
+    try:
+        window.evaluate_js(
+            "window.__cullrCheckUpdates && window.__cullrCheckUpdates()")
+    except Exception:  # noqa: BLE001 - a menu click must never take the app down
+        log.exception("could not open the update panel from the menu")
+
+
+def build_menu(on_check_updates) -> list:
+    """The window's menu bar: Check for Updates… in the application menu.
+
+    pywebview's ``__app__`` menu *is* the macOS application menu — the one
+    holding About, Hide and Quit — so the item lands where a Mac user looks for
+    it instead of inventing a top-level menu of our own. Nothing is checked on
+    launch; the item is how a manual check is started.
+
+    Returns no menu at all when pywebview is too old to have the menu API, which
+    leaves the app exactly as it was: the footer button still opens the panel.
+    """
+    try:
+        from webview.menu import Menu, MenuAction
+    except ImportError:  # pragma: no cover - pywebview 4 and earlier
+        return []
+    return [Menu("__app__", [MenuAction("Check for Updates…", on_check_updates)])]
+
+
 def _quit_for_update(window, log: logging.Logger, grace: float = 3.0) -> None:
     """Close the window so this process exits, because the update installer
     cannot replace the bundle it is currently running from.
@@ -253,6 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         height=900,
         min_size=(1024, 680),
         background_color="#14110d",
+        menu=build_menu(lambda: _open_update_panel(window, log)),
     )
     assert window is not None
     state: dict[str, object] = {}

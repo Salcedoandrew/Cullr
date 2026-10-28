@@ -1,5 +1,5 @@
 import {
-  cleanup, fireEvent, render, screen, waitFor, within,
+  act, cleanup, fireEvent, render, screen, waitFor, within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
@@ -1003,5 +1003,17 @@ describe("the in-app update entry", () => {
     // The check is the button in the panel, and nothing else.
     fireEvent.click(within(dialog).getByRole("button", { name: "Check for updates" }));
     await waitFor(() => expect(api.checkForUpdate).toHaveBeenCalledTimes(1));
+  });
+
+  it("opens the same panel from the macOS app menu", async () => {
+    // The desktop shell's menu item calls this bridge; it must reach the one
+    // panel rather than a second, drifting copy of the update flow.
+    await renderApp();
+    expect(window.__cullrCheckUpdates).toBeTypeOf("function");
+
+    act(() => window.__cullrCheckUpdates?.());
+
+    await screen.findByRole("dialog", { name: "Check for updates" });
+    expect(api.checkForUpdate).not.toHaveBeenCalled();
   });
 });

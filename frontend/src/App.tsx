@@ -14,6 +14,14 @@ import type {
   Person, Photo, Settings, Stats,
 } from "./types";
 
+declare global {
+  interface Window {
+    /** Called by the desktop wrapper's app-menu item (desktop/cullr_desktop.py).
+     *  Opens the update panel; there is still no check until the user clicks. */
+    __cullrCheckUpdates?: () => void;
+  }
+}
+
 const FALLBACK_SETTINGS: Settings = {
   preset: "wedding",
   strictness: null,
@@ -136,6 +144,15 @@ export default function App() {
         setError(errorText(event));
       }
     })();
+  }, []);
+
+  // The macOS app menu's "Check for Updates…" lands here. The panel is the only
+  // update UI, so the menu item cannot drift from the buttons on either screen.
+  useEffect(() => {
+    window.__cullrCheckUpdates = () => setUpdateOpen(true);
+    return () => {
+      delete window.__cullrCheckUpdates;
+    };
   }, []);
 
   // Load the catalog and the stored settings when a library is opened.
