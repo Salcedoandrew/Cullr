@@ -1256,6 +1256,21 @@ kbd {
   max-width: 46ch;
 }
 
+/* Why a mode cannot run, or why running it would be wrong, said on the row
+   itself: grease, so it reads as a caution rather than another help line. */
+.export-mode em.export-mode__warn {
+  color: var(--grease);
+}
+
+.export-mode input:disabled {
+  cursor: not-allowed;
+}
+
+.export-counts {
+  margin: 0 0 10px;
+  color: var(--paper);
+}
+
 .modal__field {
   display: grid;
   gap: 6px;

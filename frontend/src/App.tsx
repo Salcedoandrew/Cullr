@@ -573,7 +573,7 @@ export default function App() {
       {exportOpen && (
         <ExportPanel
           libraryId={library.id}
-          libraryPath={library.root_path}
+          stats={stats}
           remembered={exportMemory}
           onRemembered={setExportMemory}
           onClose={() => setExportOpen(false)}

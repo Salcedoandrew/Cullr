@@ -53,6 +53,10 @@ vi.mock("./api", () => ({
   formatShutter: () => "",
 }));
 
+// jsdom has no layout, so the picker's scroll-the-selection-into-view has
+// nothing to call. A no-op keeps the click paths that reach it testable.
+Element.prototype.scrollIntoView = vi.fn();
+
 const TOTAL = 72;
 
 const settings: Settings = {
@@ -203,6 +207,10 @@ const openTargetTab = (dialog: HTMLElement) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The picker's recents and the last export destination live in localStorage,
+  // which jsdom keeps for the whole file: without this, one test's destination
+  // becomes the next test's default.
+  window.localStorage.clear();
   api.capabilities.mockResolvedValue(capabilities);
   api.libraries.mockResolvedValue([]);
   // A library with no scan yet: the photo list reports total 0.
@@ -588,6 +596,126 @@ describe("a scan that could not read files", () => {
 
     await waitFor(() => expect(api.latestJob).toHaveBeenCalledWith(1));
     expect(banner()).toBeNull();
+  });
+});
+
+describe("exporting a shoot that kept nothing", () => {
+  async function openExport(stats: Partial<Stats>) {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.photos.mockResolvedValue({ photos: [], total: TOTAL,
+                                   stats: statsOf(TOTAL, stats) });
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    return screen.findByRole("dialog", { name: "Export decisions" });
+  }
+
+  const copyRow = (dialog: HTMLElement) =>
+    within(dialog).getByRole("radio", { name: /Copy keepers to a folder/ }) as HTMLInputElement;
+
+  it("says how many keepers there are and refuses to copy none of them", async () => {
+    const dialog = await openExport({ reject: TOTAL, errors: TOTAL });
+
+    expect(within(dialog).getByText(
+      new RegExp(`^0 keepers, ${TOTAL} rejected, ${TOTAL} unreadable$`))).toBeTruthy();
+    expect(copyRow(dialog).disabled).toBe(true);
+    expect(within(dialog).getByText(/No keepers to copy/)).toBeTruthy();
+    // And the panel is not sitting on a mode it cannot run.
+    expect(within(dialog).getByRole("button", { name: "Write sidecars" })).toBeTruthy();
+  });
+
+  it("warns that sidecars would record decisions nothing made", async () => {
+    const dialog = await openExport({ reject: TOTAL, errors: TOTAL });
+
+    // Both sidecar modes say it: they are the two that write a verdict.
+    expect(within(dialog).getAllByText(/were never evaluated/)).toHaveLength(2);
+    // The report is still offered: a list of what could not be read is useful.
+    const report = within(dialog).getByRole("radio", { name: /Culling report/ });
+    expect((report as HTMLInputElement).disabled).toBe(false);
+  });
+
+  it("keeps the sidecars quiet on a shoot that read fine, keepers or not", async () => {
+    const dialog = await openExport({ keep: 0, reject: TOTAL });
+
+    expect(within(dialog).queryByText(/were never evaluated/)).toBeNull();
+    expect(within(dialog).getByText(
+      new RegExp(`^0 keepers, ${TOTAL} rejected$`))).toBeTruthy();
+  });
+
+  it("offers the copy flow when there is something to copy", async () => {
+    api.export.mockResolvedValue({ written: 0, copied: 40, skipped: 0,
+                                   dest: "/Users/you/Deliveries/Katie", errors: [] });
+    const dialog = await openExport({ keep: 40, reject: 32 });
+
+    expect(within(dialog).getByText(/^40 keepers, 32 rejected$/)).toBeTruthy();
+    expect(window.localStorage.getItem("cullr.export.last-destination")).toBeNull();
+    const copy = copyRow(dialog);
+    expect(copy.disabled).toBe(false);
+    fireEvent.click(copy);
+
+    // The destination field appears with the copy mode; the export runs and the
+    // panel reports what happened instead of a bare "Nothing to export".
+    fireEvent.change(within(dialog).getByLabelText("Destination folder"),
+                     { target: { value: "/Users/you/Deliveries/Katie" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy to folder" }));
+
+    await waitFor(() => expect(api.export).toHaveBeenCalledWith(
+      1, "copy", "/Users/you/Deliveries/Katie"));
+    expect(await within(dialog).findByText("40 copied")).toBeTruthy();
+    // A destination that was actually exported to becomes the next shoot's
+    // default; that is the memory the picker falls back on.
+    expect(window.localStorage.getItem("cullr.export.last-destination"))
+      .toBe("/Users/you/Deliveries/Katie");
+  });
+
+  it("hands the folder the picker chose back to the panel", async () => {
+    api.folders.mockResolvedValue({
+      path: "/tmp/cullr-e2e", parent: "/tmp", home: "/Users/you", writable: true,
+      folders: [{ name: "delivery", path: "/tmp/cullr-e2e/delivery" }],
+      entries: [{ name: "delivery", path: "/tmp/cullr-e2e/delivery", kind: "folder" }],
+      truncated: false,
+      sidebar: { favorites: [], shared: [], locations: [] },
+    });
+    api.export.mockResolvedValue({ written: 0, copied: 3, skipped: 0,
+                                   dest: "/tmp/cullr-e2e/delivery", errors: [] });
+    const dialog = await openExport({ keep: 40, reject: 32 });
+
+    fireEvent.click(copyRow(dialog));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select a folder" }));
+
+    const picker = await screen.findByRole("dialog", { name: "Copy keepers to" });
+    fireEvent.click(within(picker).getByRole("button", { name: /delivery/ }));
+    fireEvent.click(within(picker).getByRole("button", { name: "Use this folder" }));
+
+    // The picker closes and the panel keeps the choice -- the step the video
+    // never reached, so it could neither confirm nor deny this.
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Copy keepers to" })).toBeNull());
+    expect((within(dialog).getByLabelText("Destination folder") as HTMLInputElement).value)
+      .toBe("/tmp/cullr-e2e/delivery");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copy to folder" }));
+    await waitFor(() => expect(api.export).toHaveBeenCalledWith(
+      1, "copy", "/tmp/cullr-e2e/delivery"));
+    expect(await within(dialog).findByText("3 copied")).toBeTruthy();
+  });
+
+  it("starts the picker away from the shoot folder", async () => {
+    api.folders.mockResolvedValue({
+      path: "/Users/you", parent: "/Users", home: "/Users/you", writable: true,
+      folders: [], entries: [], truncated: false,
+      sidebar: { favorites: [], shared: [], locations: [] },
+    });
+    const dialog = await openExport({ keep: 40, reject: 32 });
+
+    fireEvent.click(copyRow(dialog));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Select a folder" }));
+
+    // No destination remembered for this shoot, so the picker opens at Home --
+    // never inside /shoots/Teasers, which is where the video's copy would have
+    // put the delivery.
+    await waitFor(() => expect(api.folders).toHaveBeenCalledWith(undefined));
   });
 });
 
