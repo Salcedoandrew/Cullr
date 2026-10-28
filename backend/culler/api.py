@@ -473,7 +473,7 @@ def create_app(data_dir: Path | None = None,
     cache_dir = data_dir / "previews"
     cache_dir.mkdir(parents=True, exist_ok=True)
 
-    app = FastAPI(title="Cullr — AI photo culling", version="0.14.0")
+    app = FastAPI(title="Cullr — AI photo culling", version="0.14.1")
     app.state.store = store
     app.state.runner = runner
     app.state.updates = updates
