@@ -1,6 +1,6 @@
 [project]
 name = "cullr"
-version = "0.10.0"
+version = "0.11.0"
 description = "Local-first AI photo culling: quality scoring, blink detection and duplicate grouping"
 requires-python = ">=3.10"
 dependencies = [
