@@ -354,6 +354,18 @@ def test_helper_script_stages_before_it_deletes(tmp_path):
     assert staged < verify < delete
 
 
+def test_helper_script_relaunches_before_it_unmounts(tmp_path):
+    """Detaching the image takes up to ~20 s; the app must not wait for it."""
+    text = update.helper_script(dmg=tmp_path / "x.dmg", target=tmp_path / "Cullr.app",
+                                work=tmp_path / "work", log_file=tmp_path / "log",
+                                version="0.9.0", pid=1)
+    installed = text.index('log "installed $TARGET"')
+    relaunch = text.index('/usr/bin/open "$TARGET"')
+    # The cleanup trap detaches too, silently; the logged one is the main path.
+    detach = text.index('/usr/bin/hdiutil detach "$WORK/mnt" >>"$LOG"')
+    assert installed < relaunch < detach
+
+
 # ---- the state machine --------------------------------------------------- #
 
 

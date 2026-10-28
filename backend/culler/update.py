@@ -336,8 +336,10 @@ def helper_script(*, dmg: Path | str, target: Path | str, work: Path | str,
     The new bundle is fully staged in the target's own parent directory and
     checked for a plist and an executable *before* the old one is deleted, so a
     copy that fails part-way leaves the working app in place rather than an empty
-    Applications folder. Every failure logs one ``FAIL`` line and exits non-zero;
-    nothing pretends an update happened that did not.
+    Applications folder. It reopens the app as soon as the new bundle is in
+    place, and only then spends its time detaching the disk image. Every failure
+    logs one ``FAIL`` line and exits non-zero; nothing pretends an update
+    happened that did not.
     """
     pid = os.getpid() if pid is None else pid
     name = Path(str(target)).name or f"{APP_NAME}.app"
@@ -436,16 +438,20 @@ if ! mv "$STAGED" "$TARGET"; then
 fi
 log "installed $TARGET"
 
-/usr/bin/hdiutil detach "$WORK/mnt" >>"$LOG" 2>&1 || log "WARN could not unmount $WORK/mnt"
-rm -f "$DMG"
-cleanup
-log "removed the download and the mount point"
-
+# Relaunch before letting go of the disk image. hdiutil can take ~20 s to
+# detach, and the new bundle is already in place with nothing left to do with
+# the mounted one, so there is no reason to keep the person waiting at a closed
+# window while macOS finishes housekeeping. Cleanup still runs either way.
 if /usr/bin/open "$TARGET" >>"$LOG" 2>&1; then
   log "relaunched $TARGET on $APP {version}"
 else
   log "WARN $APP {version} is installed but could not be relaunched; open it from Applications"
 fi
+
+/usr/bin/hdiutil detach "$WORK/mnt" >>"$LOG" 2>&1 || log "WARN could not unmount $WORK/mnt"
+rm -f "$DMG"
+cleanup
+log "removed the download and the mount point"
 log "done: $APP {version} installed at $TARGET"
 """
 
