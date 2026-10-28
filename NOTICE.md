@@ -27,6 +27,7 @@ informed this implementation and are credited here.
 | FastAPI, Starlette, Uvicorn, Pydantic | MIT / BSD-3 | HTTP API. |
 | React, Vite | MIT | Review interface. |
 | Test fixtures in `.research/fixtures/` | CC BY-SA 3.0/4.0 (Wikimedia Commons) | Downloaded only for local verification and **not** redistributed: the directory is git-ignored. |
+| `backend/tests/fixtures/canon_eos_rp.cr3` | CC0 (public domain) | RAW test fixture from [raw.pixls.us](https://raw.pixls.us/) (Canon EOS RP, C-RAW, crop mode, SHA-256 `4a859ab137f792aedaf3416b0aad1497ebaab02052a49453902e226699154aa7`), committed because 0.8.0 shipped unable to read exactly this container: Canon's CRX is decoded by a separate part of libraw from the TIFF-family formats, so the ORF fixture alone cannot catch a build that lost CR3 support. Used by the backend tests and by the release build's smoke test, which culls one frame of it. CC0 needs no attribution; recorded here so the file's origin is not a mystery later. |
 | `backend/tests/fixtures/olympus_c5050z.orf` | CC0 (public domain) | RAW test fixture from [raw.pixls.us](https://raw.pixls.us/) (Olympus C-5050Z, SHA-256 `f4b013e78204ebaadd740d93416080856b3c51ec154760e2e2de0e552873044a`), committed so the RAW decode path — and the release build's own smoke test — can be verified without a camera. CC0 needs no attribution; recorded here so the file's origin is not a mystery later. |
 
 ## Deliberately not used

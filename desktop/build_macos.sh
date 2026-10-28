@@ -50,9 +50,13 @@ test -d "$APP"
 
 step "Smoke test the bundle"
 LOG="$(mktemp)"
-"$APP/Contents/MacOS/$APP_NAME" --server-only >"$LOG" 2>&1 &
+# The smoke test opens a library and runs a cull in it. Point the bundled app
+# at a throwaway data directory so a release build never leaves a test library
+# in the developer's real catalog, and so the run is repeatable.
+SMOKE_DATA="$(mktemp -d)"
+CULLR_DATA_DIR="$SMOKE_DATA" "$APP/Contents/MacOS/$APP_NAME" --server-only >"$LOG" 2>&1 &
 SERVICE_PID=$!
-cleanup() { kill "$SERVICE_PID" 2>/dev/null || true; }
+cleanup() { kill "$SERVICE_PID" 2>/dev/null || true; rm -rf "$SMOKE_DATA"; }
 trap cleanup EXIT
 BASE=""
 for _ in $(seq 1 120); do
@@ -91,20 +95,61 @@ esac
 # a native library, and a native library is what a frozen build loses. So hand
 # the frozen server a real RAW file and insist on the JPEG the picker would
 # show for it.
-RAW_FIXTURE="$ROOT/backend/tests/fixtures/olympus_c5050z.orf"
-if [ ! -s "$RAW_FIXTURE" ]; then
-  echo "no RAW fixture to smoke-test with (expected $RAW_FIXTURE)" >&2
-  exit 1
-fi
-RAW_TILE="$(mktemp)"
-curl -fsS -G --data-urlencode "path=$RAW_FIXTURE" -o "$RAW_TILE" \
-  "$BASE/api/folders/preview?size=256"
-if [ "$(xxd -p -l 2 "$RAW_TILE")" != "ffd8" ]; then
-  echo "the bundle could not decode a RAW file (no JPEG preview rendered)" >&2
-  exit 1
-fi
-echo "raw decoding: rendered a $(wc -c <"$RAW_TILE" | tr -d ' ') byte preview from a RAW"
-rm -f "$RAW_TILE"
+#
+# Two containers, because they are separate decoders inside libraw. The ORF
+# proves the rawpy path survived freezing; the CR3 is the one that failed in
+# 0.8.0, and LibRaw needs its CRX decoder compiled in to read it. A build with
+# a working rawpy and a CR3-less libraw passes the first and fails the second.
+RAW_FIXTURES=(
+  "$ROOT/backend/tests/fixtures/olympus_c5050z.orf"
+  "$ROOT/backend/tests/fixtures/canon_eos_rp.cr3"
+)
+for RAW_FIXTURE in "${RAW_FIXTURES[@]}"; do
+  if [ ! -s "$RAW_FIXTURE" ]; then
+    echo "no RAW fixture to smoke-test with (expected $RAW_FIXTURE)" >&2
+    exit 1
+  fi
+  RAW_TILE="$(mktemp)"
+  curl -fsS -G --data-urlencode "path=$RAW_FIXTURE" -o "$RAW_TILE" \
+    "$BASE/api/folders/preview?size=256"
+  if [ "$(xxd -p -l 2 "$RAW_TILE")" != "ffd8" ]; then
+    echo "the bundle could not decode $(basename "$RAW_FIXTURE") (no JPEG preview rendered)" >&2
+    exit 1
+  fi
+  echo "raw decoding: rendered a $(wc -c <"$RAW_TILE" | tr -d ' ') byte preview from $(basename "$RAW_FIXTURE")"
+  rm -f "$RAW_TILE"
+done
+
+# The preview is libraw's embedded thumbnail; the cull is the full decode, and
+# the full decode is what rejected all 3,016 CR3 frames. So run a one-frame CR3
+# shoot through the bundled server and insist the frame was evaluated: a clean
+# job, and nothing in the Unreadable filter.
+SHOOT="$(mktemp -d)"
+cp "$ROOT/backend/tests/fixtures/canon_eos_rp.cr3" "$SHOOT/"
+LIBRARY="$(curl -fsS -X POST -H 'Content-Type: application/json' \
+  --data "{\"path\":\"$SHOOT\"}" "$BASE/api/libraries")"
+LIBRARY_ID="$(printf '%s' "$LIBRARY" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')"
+[ -n "$LIBRARY_ID" ] || { echo "the bundle would not open a library: $LIBRARY" >&2; exit 1; }
+curl -fsS -X POST -H 'Content-Type: application/json' -d '{"force":true}' \
+  "$BASE/api/libraries/$LIBRARY_ID/scan" >/dev/null
+JOB=""
+for _ in $(seq 1 240); do
+  JOB="$(curl -fsS "$BASE/api/libraries/$LIBRARY_ID/job")"
+  case "$JOB" in
+    *'"status":"running"'*) sleep 0.5 ;;
+    *) break ;;
+  esac
+done
+case "$JOB" in
+  *'"status":"done"'*) ;;
+  *) echo "the bundled cull of a CR3 did not finish cleanly: $JOB" >&2; exit 1 ;;
+esac
+UNREADABLE="$(curl -fsS "$BASE/api/libraries/$LIBRARY_ID/photos?filter=errors")"
+case "$UNREADABLE" in
+  *'"total":0'*) echo "raw decoding: the bundle culled a CR3 frame instead of calling it unreadable" ;;
+  *) echo "the bundle reported a CR3 as unreadable: $UNREADABLE" >&2; exit 1 ;;
+esac
+rm -rf "$SHOOT"
 curl -fsS -o /dev/null "$BASE/" && echo "UI: served from the bundle"
 curl -fsS -o /dev/null "$BASE/api/libraries" && echo "API: responding"
 cleanup

@@ -19,9 +19,18 @@ The numbers below were measured in this environment, not guessed:
   `blurry` — a 160x120 preview upscaled to the 1600 px analysis frame *is*
   soft, which is the app's documented preview-based RAW behaviour).
 
-The fixture is a CC0 sample from raw.pixls.us (see NOTICE.md), committed so
+The fixtures are CC0 samples from raw.pixls.us (see NOTICE.md), committed so
 that both the decode path and the release build's own smoke test can be
 verified without a camera attached.
+
+Both containers are kept because they are not the same test. The ORF proves
+the rawpy path works at all; the CR3 proves it works on the container that
+actually failed, Canon's CRX (an ISO-BMFF box structure, `ftypcrx`, not a
+TIFF like every other format here). A build can carry a working rawpy and
+still fail on CR3 alone — LibRaw has to be compiled with the CR3 decoder — so
+pinning the ORF would have let 0.8.0 through even with the extra installed.
+Measured with rawpy 0.27.1: the CR3 decodes to 3888x2592 and renders a
+37,067-byte preview.
 """
 
 from __future__ import annotations
@@ -40,6 +49,19 @@ from culler.pipeline import run_scan
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "olympus_c5050z.orf"
+CR3_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "canon_eos_rp.cr3"
+
+# Each fixture's own container magic, at the offset that format puts it: an ORF
+# is a TIFF-family file starting with Olympus's "IIRS"; a CR3 is an ISO-BMFF
+# file whose brand sits after the box length, at byte 4.
+SAMPLES = [
+    pytest.param(FIXTURE, id="orf"),
+    pytest.param(CR3_FIXTURE, id="cr3"),
+]
+CONTAINER_MAGIC = {
+    FIXTURE.name: (0, b"IIRS"),
+    CR3_FIXTURE.name: (4, b"ftypcrx"),
+}
 NEEDS_RAWPY = pytest.mark.skipif(
     not imaging.RAWPY_AVAILABLE,
     reason="the `raw` extra is not installed in this environment",
@@ -52,11 +74,11 @@ def client(tmp_path):
         yield test_client
 
 
-def only_raw_folder(tmp_path: Path) -> Path:
-    """A shoot folder holding exactly the RAW fixture."""
+def only_raw_folder(tmp_path: Path, sample: Path = FIXTURE) -> Path:
+    """A shoot folder holding exactly one RAW fixture."""
     folder = tmp_path / "raw-shoot"
     folder.mkdir()
-    (folder / FIXTURE.name).write_bytes(FIXTURE.read_bytes())
+    (folder / sample.name).write_bytes(sample.read_bytes())
     return folder
 
 
@@ -66,31 +88,50 @@ def without_rawpy(monkeypatch) -> None:
     monkeypatch.setattr(imaging, "RAWPY_AVAILABLE", False)
 
 
-def test_the_fixture_is_a_real_raw_file():
-    assert FIXTURE.is_file(), "the RAW fixture is missing from the repository"
-    assert FIXTURE.suffix.lower() in RAW_EXTENSIONS
-    # An ORF is a little-endian TIFF-family container carrying Olympus's own
-    # magic ("IIRS"): a truncated or placeholder file would keep the extension
-    # but could never exercise decoding.
-    assert FIXTURE.read_bytes()[:4] == b"IIRS"
-    assert FIXTURE.stat().st_size > 1_000_000
+@pytest.mark.parametrize("sample", SAMPLES)
+def test_each_fixture_is_a_real_raw_file(sample: Path):
+    assert sample.is_file(), f"the RAW fixture is missing: {sample.name}"
+    assert sample.suffix.lower() in RAW_EXTENSIONS
+    # A truncated or placeholder file would keep the extension but could never
+    # exercise decoding, so the container's own magic is asserted.
+    offset, magic = CONTAINER_MAGIC[sample.name]
+    assert sample.read_bytes()[offset:offset + len(magic)] == magic
+    assert sample.stat().st_size > 1_000_000
 
 
 @NEEDS_RAWPY
-def test_a_raw_frame_decodes_and_renders_a_preview():
-    bgr, meta, error = imaging.load_image(FIXTURE)
+@pytest.mark.parametrize("sample", SAMPLES)
+def test_a_raw_frame_decodes_and_renders_a_preview(sample: Path):
+    bgr, meta, error = imaging.load_image(sample)
     assert error is None, f"rawpy is installed but the RAW did not decode: {error}"
     assert bgr is not None
     assert meta.width > 0 and meta.height > 0
-    preview = imaging.render_jpeg(FIXTURE)
+    preview = imaging.render_jpeg(sample)
     assert preview is not None and preview[:2] == b"\xff\xd8"
 
 
 @NEEDS_RAWPY
-def test_a_scan_reads_every_raw_frame_instead_of_failing_them(tmp_path: Path):
+def test_a_cr3_parses_its_own_metadata():
+    """The CR3 is decoded by LibRaw's CRX path, not by the TIFF one.
+
+    A build whose LibRaw lacks CR3 support fails here and nowhere else: the ORF
+    above still decodes, which is exactly how a "RAW works on my machine" venv
+    can hide a shipped build that cannot read Canon's files at all.
+    """
+    _bgr, meta, error = imaging.load_image(CR3_FIXTURE)
+    assert error is None, f"the CR3 did not decode: {error}"
+    assert (meta.width, meta.height) == (3888, 2592)
+    assert meta.camera and "EOS RP" in meta.camera
+    assert imaging.render_jpeg(CR3_FIXTURE) is not None
+
+
+@NEEDS_RAWPY
+@pytest.mark.parametrize("sample", SAMPLES)
+def test_a_scan_reads_every_raw_frame_instead_of_failing_them(tmp_path: Path,
+                                                             sample: Path):
     """The 0.8.0 symptom, inverted: a RAW shoot scans with no read errors."""
     store = Store(tmp_path / "catalog.db")
-    folder = only_raw_folder(tmp_path)
+    folder = only_raw_folder(tmp_path, sample)
     library = store.create_or_get_library(str(folder))
     result = run_scan(store, library["id"], CullingSettings(), force=True)
 
@@ -102,8 +143,10 @@ def test_a_scan_reads_every_raw_frame_instead_of_failing_them(tmp_path: Path):
     assert row["quality"] is not None, "the frame was never scored"
 
 
+@pytest.mark.parametrize("sample", SAMPLES)
 def test_a_build_without_rawpy_reports_the_file_as_unreadable(tmp_path: Path,
-                                                             monkeypatch):
+                                                             monkeypatch,
+                                                             sample: Path):
     """The 0.8.0 behaviour, pinned: this is what the missing extra looked like.
 
     Runs in every environment — including one that has rawpy installed — so the
@@ -111,15 +154,15 @@ def test_a_build_without_rawpy_reports_the_file_as_unreadable(tmp_path: Path,
     virtualenv.
     """
     without_rawpy(monkeypatch)
-    bgr, meta, error = imaging.load_image(FIXTURE)
+    bgr, meta, error = imaging.load_image(sample)
     assert bgr is None
     assert meta.width == 0 and meta.height == 0
     assert error is not None
     assert error.startswith("UnidentifiedImageError: cannot identify image file")
-    assert imaging.render_jpeg(FIXTURE) is None
+    assert imaging.render_jpeg(sample) is None
 
     store = Store(tmp_path / "catalog.db")
-    folder = only_raw_folder(tmp_path)
+    folder = only_raw_folder(tmp_path, sample)
     library = store.create_or_get_library(str(folder))
     result = run_scan(store, library["id"], CullingSettings(), force=True)
     assert result.keepers == 0
@@ -146,3 +189,19 @@ def test_the_build_installs_the_raw_extra(workflow: str):
     assert extras, f"{workflow} no longer installs the backend package"
     assert any("raw" in part.split(",") for part in extras), (
         f"{workflow} installs {extras}, which cannot decode RAW files")
+
+
+def test_the_bundle_smoke_test_decodes_a_cr3():
+    """The build gate must exercise the container that actually failed.
+
+    A smoke test that previews only the ORF passes on a LibRaw without the CR3
+    decoder, which is the shape of the 0.8.0 failure: RAW is "supported" right
+    up until the shoot is Canon.
+    """
+    script = (ROOT / "desktop" / "build_macos.sh").read_text()
+    assert CR3_FIXTURE.name in script, (
+        "the bundle smoke test no longer decodes a CR3, so a build could ship "
+        "without CR3 support and still pass")
+    assert "filter=errors" in script, (
+        "the bundle smoke test no longer runs a cull over the CR3, so it only "
+        "proves the preview path")
