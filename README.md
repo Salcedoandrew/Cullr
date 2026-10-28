@@ -127,8 +127,9 @@ port that closes with the window.
   survive a rescan, re-analysis is opt-in, and a running scan can be cancelled.
 * **Pause, cancel, resume** — *Pause* stops a running cull at the next frame
   boundary and keeps every frame it had already analysed; *Resume* starts it
-  again and only looks at what was left. *Cancel* ends the scan outright, says
-  so instead of going quiet, and keeps the analysed frames too — starting the
+  again and only looks at what was left. *Cancel* ends the scan outright behind a
+  confirming second tap, says so instead of going quiet, and keeps the analysed
+  frames too — starting the
   cull again picks up from there. Nothing is decided off a half-read shoot, so a
   paused cull never shows a keeper count it has not earned.
 

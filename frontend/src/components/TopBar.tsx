@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { Job, Library, Stats } from "../types";
 
 interface Props {
@@ -16,6 +17,13 @@ export function TopBar({
   library, stats, job, busy, onOpenCull, onExport, onPause, onResume, onCancel,
 }: Props) {
   const paused = job?.status === "paused";
+  // Ending a long cull is not something a stray click should do, so Cancel
+  // takes a second tap — the same confirming pair the re-analyse button uses.
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  useEffect(() => {
+    if (!busy) setConfirmCancel(false);
+  }, [busy]);
 
   return (
     <header className="topbar">
@@ -41,8 +49,20 @@ export function TopBar({
             <button type="button" className="button" onClick={onPause}>
               Pause
             </button>
-            <button type="button" className="button" onClick={onCancel}>
-              Cancel
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                if (confirmCancel) {
+                  setConfirmCancel(false);
+                  onCancel();
+                } else {
+                  setConfirmCancel(true);
+                }
+              }}
+              onBlur={() => setConfirmCancel(false)}
+            >
+              {confirmCancel ? "Confirm: cancel cull" : "Cancel"}
             </button>
           </>
         )}

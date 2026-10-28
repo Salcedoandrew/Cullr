@@ -907,7 +907,10 @@ describe("the grid while a scan runs", () => {
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
 
+    // One tap only arms it: a stray click must not end a two-hour cull.
     fireEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    expect(api.cancelScan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm: cancel cull" }));
     expect(api.cancelScan).toHaveBeenCalledWith(running.id);
 
     // The job answers as cancelled: the sheet says so, and neither Pause nor
@@ -915,6 +918,7 @@ describe("the grid while a scan runs", () => {
     expect(await screen.findByText("Cancelled")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Confirm: cancel cull" })).toBeNull();
     expect(screen.queryByRole("progressbar", { name: "Cull progress" })).toBeNull();
   });
 
