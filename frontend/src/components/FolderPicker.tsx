@@ -10,7 +10,10 @@ import type { FolderEntry, FolderListing, FolderShortcut } from "../types";
  * Finder, not a bespoke dialog.
  *
  * Semantics follow NSOpenPanel too: the current folder is the answer, unless a
- * sub-folder is selected, in which case that one is.
+ * sub-folder is selected, in which case that one is. New Folder follows the
+ * system's own prompt: a modal asking for the name of the new folder inside
+ * the folder being browsed, with Cancel and Create — not an editable row in
+ * the browser grid.
  */
 
 interface Props {
@@ -396,6 +399,12 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
     setMenuOpen(false);
   }, []);
 
+  const cancelCreate = useCallback(() => {
+    setCreating(false);
+    setDraft("");
+    setError(null);
+  }, []);
+
   const create = useCallback(async () => {
     const name = draft.trim();
     if (!listing || !name || saving) return;
@@ -409,6 +418,8 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
       setListing(next);
       setSelected(made.path);
     } catch (event) {
+      // The prompt stays open, with the error inside it, so the name can be
+      // fixed and retried instead of starting the whole pick over.
       setError(errorText(event));
     } finally {
       setSaving(false);
@@ -442,13 +453,15 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
       if (event.key === "Escape") {
         event.stopPropagation();
         if (menuOpen) setMenuOpen(false);
-        else if (creating) {
-          setCreating(false);
-          setDraft("");
-          setError(null);
-        } else onClose();
+        else if (creating) cancelCreate();
+        else onClose();
         return;
       }
+      // While the name prompt is open, the picker behind it takes no keys:
+      // arrows must not move the selection, and Enter must not confirm a
+      // folder. The prompt's own input handles Enter, and its buttons handle
+      // the rest.
+      if (creating) return;
       const element = event.target as HTMLElement | null;
       if (element && ["INPUT", "TEXTAREA", "SELECT"].includes(element.tagName)) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -471,7 +484,7 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [confirm, creating, entries, menuOpen, move, onClose, open, selected]);
+  }, [cancelCreate, confirm, creating, entries, menuOpen, move, onClose, open, selected]);
 
   // Exactly one row is highlighted, the one the browser is sitting in — a
   // prefix match would light up Home and Documents at the same time.
@@ -673,26 +686,6 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
         </div>
 
         <div className={`finder__content${view === "list" ? " finder__content--list" : ""}`} ref={content}>
-          {creating && (
-            <div className="finder__item finder__item--draft">
-              <FolderGlyph />
-              <input
-                ref={draftField}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    void create();
-                  }
-                }}
-                aria-label="New folder name"
-                spellCheck={false}
-              />
-            </div>
-          )}
-
           {view === "grid"
             ? entries.map((entry) => (
                 <button
@@ -777,6 +770,52 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
           </div>
         </div>
       </div>
+
+      {creating && listing && (
+        <div
+          className="finder__newfolder-scrim"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) cancelCreate();
+          }}
+        >
+          <div className="finder__newfolder" role="dialog" aria-modal="true" aria-label="New Folder">
+            <h2>New Folder</h2>
+            <p>
+              Name of new folder inside &ldquo;
+              {listing.path === "/" ? "Macintosh HD" : basename(listing.path)}
+              &rdquo;:
+            </p>
+            <input
+              ref={draftField}
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void create();
+                }
+              }}
+              aria-label="New folder name"
+              spellCheck={false}
+            />
+            {error && <p className="finder__newfolder-error">{error}</p>}
+            <div className="finder__newfolder-actions">
+              <button type="button" className="finder__button" onClick={cancelCreate}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="finder__button finder__button--primary"
+                onClick={() => void create()}
+                disabled={!draft.trim() || saving}
+              >
+                {saving ? "Creating…" : "Create"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
