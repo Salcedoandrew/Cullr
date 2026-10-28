@@ -95,11 +95,13 @@ export default function App() {
   const [dismissedJob, setDismissedJob] = useState<number | null>(null);
 
   const busy = job?.status === "running";
+  const paused = job?.status === "paused";
   const scanProgress = busy ? job?.message ?? job?.stage ?? "Scanning" : null;
-  /** How far the running cull has got, for the bar on the window's bottom edge.
+  /** How far the cull has got, for the bar on the window's bottom edge. It stays
+   *  on screen while paused so the fill shows exactly where it stopped.
    *  Null until the job knows its total, which is the one case a bar cannot
    *  honestly claim to be at 0 %. */
-  const cullPercent = busy && job && job.total > 0
+  const cullPercent = (busy || paused) && job && job.total > 0
     ? Math.min(100, Math.round((job.done / job.total) * 100))
     : null;
   /** A finished scan that could not read files: the one case where "0 keepers"
@@ -230,6 +232,24 @@ export default function App() {
     },
     [],
   );
+
+  /** Stop the running cull at the next frame boundary. The job answers as
+   *  "paused" on the next poll, and the frames already analysed stay stored. */
+  const pauseScan = useCallback(() => {
+    if (!job || job.status !== "running") return;
+    void api.pauseScan(job.id).catch((event) => setError(errorText(event)));
+  }, [job]);
+
+  /** Continue a paused cull. The scan is resumable by construction — analysed
+   *  frames are reused — so the server starts it again and hands back the job
+   *  the poll below tracks. */
+  const resumeScan = useCallback(() => {
+    if (!library) return;
+    void api
+      .resumeScan(library.id)
+      .then((started) => setJob(started))
+      .catch((event) => setError(errorText(event)));
+  }, [library]);
 
   /** Count the photos an import set holds, for the cull options to show before
    *  any scan has run. A names-only walk on the server; null when the count
@@ -481,6 +501,8 @@ export default function App() {
         busy={busy}
         onOpenCull={() => setCullOpen(true)}
         onExport={() => setExportOpen(true)}
+        onPause={pauseScan}
+        onResume={resumeScan}
       />
 
       <div className="app__body">
@@ -577,7 +599,7 @@ export default function App() {
       {/* How far the cull has got, at the window's own edge. The top bar names
           the stage ("Analysed 1,400 of 3,016"); this is the part that reads at
           a glance while you are looking at the grid, not at the header. */}
-      {busy && (
+      {(busy || paused) && (
         <div
           className={`cullbar${cullPercent === null ? " is-indeterminate" : ""}`}
           role="progressbar"
@@ -588,7 +610,7 @@ export default function App() {
           aria-valuetext={
             cullPercent === null
               ? "Starting…"
-              : `${cullPercent}% — ${job?.message ?? job?.stage ?? "scanning"}`
+              : `${cullPercent}% — ${job?.message ?? job?.stage ?? (paused ? "paused" : "scanning")}`
           }
         >
           <span style={cullPercent === null ? undefined : { width: `${cullPercent}%` }} />

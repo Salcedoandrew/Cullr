@@ -292,7 +292,8 @@ export interface PhotoResponse {
 
 export interface Job {
   id: number;
-  status: "running" | "done" | "error" | "cancelled";
+  /** `paused` is a running scan that stopped on request: resumable, not done. */
+  status: "running" | "paused" | "done" | "error" | "cancelled";
   stage: string;
   message: string | null;
   total: number;

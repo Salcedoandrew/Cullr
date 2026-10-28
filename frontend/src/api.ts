@@ -68,6 +68,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ settings, force }),
     }),
+  /** Ask a running cull to stop at the next frame boundary. */
+  pauseScan: (jobId: number) =>
+    request<{ pausing: number }>(`/api/jobs/${jobId}/pause`, { method: "POST" }),
+  /** Continue a paused cull: the frames already analysed are reused. */
+  resumeScan: (id: number) =>
+    request<Job>(`/api/libraries/${id}/resume`, { method: "POST" }),
   latestJob: (id: number) => request<Job | Record<string, never>>(`/api/libraries/${id}/job`),
   job: (jobId: number) => request<Job>(`/api/jobs/${jobId}`),
 

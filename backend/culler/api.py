@@ -296,6 +296,7 @@ class JobRunner:
         self.store = store
         self._threads: dict[int, threading.Thread] = {}
         self._events: dict[int, threading.Event] = {}
+        self._pauses: dict[int, threading.Event] = {}
         self._lock = threading.Lock()
         self.faces = FaceAnalyzer()
 
@@ -309,6 +310,8 @@ class JobRunner:
             job = self.store.create_job(library_id)
             event = threading.Event()
             self._events[job["id"]] = event
+            paused = threading.Event()
+            self._pauses[job["id"]] = paused
 
             def progress(stage: str, done: int, total: int, message: str) -> None:
                 self.store.update_job(job["id"], stage=stage, done=done,
@@ -317,8 +320,16 @@ class JobRunner:
             def work() -> None:
                 try:
                     result = run_scan(self.store, library_id, settings, progress, event,
-                                      force=force)
-                    if result.cancelled:
+                                      force=force, pause_event=paused)
+                    if result.paused:
+                        # Deliberately not "done" and not "error": the cull is
+                        # mid-flight, the frames analysed so far are stored, and
+                        # resuming is the same scan with the pause cleared.
+                        self.store.update_job(
+                            job["id"], status="paused", stage="paused",
+                            message=(f"Paused — {result.analysed} of "
+                                     f"{result.total} frames analysed"))
+                    elif result.cancelled:
                         self.store.update_job(job["id"], status="cancelled",
                                               stage="cancelled", message="Cancelled")
                     else:
@@ -358,6 +369,7 @@ class JobRunner:
                 finally:
                     with self._lock:
                         self._events.pop(job["id"], None)
+                        self._pauses.pop(job["id"], None)
 
             thread = threading.Thread(target=work, name=f"scan-{library_id}", daemon=True)
             self._threads[job["id"]] = thread
@@ -366,6 +378,18 @@ class JobRunner:
 
     def cancel(self, job_id: int) -> bool:
         event = self._events.get(job_id)
+        if event is None:
+            return False
+        event.set()
+        return True
+
+    def pause(self, job_id: int) -> bool:
+        """Ask a running scan to stop at the next frame boundary.
+
+        Cooperative, like cancel: the frame being analysed finishes and its
+        result is stored, so a paused cull never loses work it had already done.
+        """
+        event = self._pauses.get(job_id)
         if event is None:
             return False
         event.set()
@@ -720,6 +744,29 @@ def create_app(data_dir: Path | None = None,
         if not runner.cancel(job_id):
             raise HTTPException(409, "job is not cancellable (already finished)")
         return {"cancelling": job_id}
+
+    @app.post("/api/jobs/{job_id}/pause")
+    def pause_job(job_id: int) -> dict:
+        if not runner.pause(job_id):
+            raise HTTPException(409, "job is not pausable (not running)")
+        return {"pausing": job_id}
+
+    @app.post("/api/libraries/{library_id}/resume")
+    def resume_scan(library_id: int) -> dict:
+        """Continue a paused cull.
+
+        A scan is resumable by construction: each frame's analysis is stored as
+        it completes, and a later scan reuses every frame that has not changed.
+        So continuing is the same scan again with the pause cleared, which is
+        what the normal endpoint does — this one just reads the library's own
+        settings instead of asking the client to send them back.
+        """
+        library = store.get_library(library_id)
+        if not library:
+            raise HTTPException(404, "library not found")
+        settings = CullingSettings.from_dict(
+            _json_or_none(library.get("settings_json")))
+        return runner.start(library_id, settings, False)
 
     # ---- review data --------------------------------------------------- #
     @app.get("/api/libraries/{library_id}/persons")

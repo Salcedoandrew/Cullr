@@ -352,6 +352,9 @@ class ScanResult:
     ingested: int = 0       # files copied into the working copy / backup
     ingest_reused: int = 0  # files already there, left alone
     cancelled: bool = False
+    # Stopped on request but resumable: everything analysed so far is stored, so
+    # continuing is the same scan again with the pause cleared.
+    paused: bool = False
     elapsed: float = 0.0
     # One line per file the scan could not read ("<filename>: <Type>: <msg>"),
     # capped at 25: the count is ``failed``, this is the evidence.
@@ -375,7 +378,8 @@ def read_failure_sample(errors: list[str]) -> str | None:
 
 def ingest_copy(source: Path, dest: Path, *, recursive: bool, extensions: set[str],
                 progress: ProgressCb | None = None,
-                cancel_event: threading.Event | None = None) -> tuple[int, int]:
+                cancel_event: threading.Event | None = None,
+                pause_event: threading.Event | None = None) -> tuple[int, int]:
     """Copy the import set from ``source`` into ``dest``, preserving layout.
 
     Only files the import admits (the extension filter, the recursive flag)
@@ -389,10 +393,11 @@ def ingest_copy(source: Path, dest: Path, *, recursive: bool, extensions: set[st
 
     progress = progress or (lambda *_: None)
     cancel_event = cancel_event or threading.Event()
+    pause_event = pause_event or threading.Event()
     files = iter_images(source, recursive=recursive, extensions=extensions)
     copied = reused = 0
     for index, path in enumerate(files, start=1):
-        if cancel_event.is_set():
+        if cancel_event.is_set() or pause_event.is_set():
             break
         target = dest / path.relative_to(source)
         try:
@@ -457,10 +462,12 @@ def run_scan(
     progress: ProgressCb | None = None,
     cancel_event: threading.Event | None = None,
     force: bool = False,
+    pause_event: threading.Event | None = None,
 ) -> ScanResult:
     started = time.monotonic()
     progress = progress or (lambda *_: None)
     cancel_event = cancel_event or threading.Event()
+    pause_event = pause_event or threading.Event()
     library = store.get_library(library_id)
     if not library:
         raise ValueError(f"library {library_id} not found")
@@ -479,7 +486,8 @@ def run_scan(
         if root.is_dir():
             copied, reused = ingest_copy(root, working, recursive=settings.recursive,
                                          extensions=extensions, progress=progress,
-                                         cancel_event=cancel_event)
+                                         cancel_event=cancel_event,
+                                         pause_event=pause_event)
             result.ingested += copied
             result.ingest_reused += reused
             if settings.backup_dir:
@@ -490,7 +498,8 @@ def run_scan(
                     raise ValueError("backup folder must not be inside the source folder")
                 copied, reused = ingest_copy(root, backup, recursive=settings.recursive,
                                              extensions=extensions, progress=progress,
-                                             cancel_event=cancel_event)
+                                             cancel_event=cancel_event,
+                                             pause_event=pause_event)
                 result.ingested += copied
                 result.ingest_reused += reused
             effective_root = working
@@ -499,6 +508,10 @@ def run_scan(
             # still here: scan that. A rescan reuses the same working copy.
             progress("ingesting", 0, 0, "Source folder is gone — using the working copy")
             effective_root = working
+        if pause_event.is_set():
+            result.paused = True
+            result.elapsed = time.monotonic() - started
+            return result
         if cancel_event.is_set():
             result.cancelled = True
             result.elapsed = time.monotonic() - started
@@ -535,6 +548,12 @@ def run_scan(
             result.reused += 1
         else:
             pending.append((path, photo_id, key))
+        if pause_event.is_set():
+            # Pausing here is safe: every row registered so far is real, and a
+            # resume picks up the rest without re-reading what is already known.
+            result.paused = True
+            result.elapsed = time.monotonic() - started
+            return result
         if index % 200 == 0:
             progress("discovering", index, len(files), "Registering files")
 
@@ -592,14 +611,34 @@ def run_scan(
         photos.append(photo)
 
     if pending:
+        handled: set = set()
+        stopped = False
         with ThreadPoolExecutor(max_workers=_worker_count()) as pool:
             futures = {pool.submit(analyse_one, item): item for item in pending}
             for future in as_completed(futures):
-                if cancel_event.is_set():
+                if cancel_event.is_set() or pause_event.is_set():
                     for f in futures:
                         f.cancel()
+                    stopped = True
                     break
                 handle(future, futures[future])
+                handled.add(future)
+        if stopped and pause_event.is_set() and not cancel_event.is_set():
+            # The pool has shut down by now, so every frame the workers had
+            # already finished is waiting here. Storing them is the difference
+            # between "paused" and "paused and threw away the last batch": a
+            # resume only has to look at what was never analysed. Futures that
+            # were cancelled raise if asked, so only completed ones are kept.
+            for future, item in futures.items():
+                if future not in handled and future.done() and not future.cancelled():
+                    handle(future, item)
+        if pause_event.is_set():
+            # Grouping and selection have not run, so the sheet keeps whatever
+            # verdicts it had; the analyses that did finish are stored and a
+            # resume reuses them instead of looking at those frames again.
+            result.paused = True
+            result.elapsed = time.monotonic() - started
+            return result
         if cancel_event.is_set():
             result.cancelled = True
             result.elapsed = time.monotonic() - started

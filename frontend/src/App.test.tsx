@@ -27,6 +27,8 @@ const api = vi.hoisted(() => ({
   folders: vi.fn(),
   createFolder: vi.fn(),
   scan: vi.fn(),
+  pauseScan: vi.fn(),
+  resumeScan: vi.fn(),
   latestJob: vi.fn(),
   job: vi.fn(),
   discover: vi.fn(),
@@ -845,6 +847,45 @@ describe("the grid while a scan runs", () => {
       () => expect(screen.getByRole("button", { name: /IMG_0001\.jpg/ })).toBeTruthy(),
       { timeout: 4000 },
     );
+  });
+
+  it("pauses a running cull and resumes it from the same place", async () => {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    api.photos.mockResolvedValue({ photos: [], total: 0, stats: statsOf(TOTAL) });
+    const running = jobOf({ status: "running", stage: "analyzing", done: 12,
+                            message: "Analysed 12 of 72 photos" });
+    const stopped = jobOf({ status: "paused", stage: "paused", done: 12,
+                            message: "Paused — 12 of 72 frames analysed" });
+    api.scan.mockResolvedValue(running);
+    api.job.mockResolvedValue(stopped);
+    api.pauseScan.mockResolvedValue({ pausing: running.id });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
+
+    const pause = await screen.findByRole("button", { name: "Pause" });
+    fireEvent.click(pause);
+    expect(api.pauseScan).toHaveBeenCalledWith(running.id);
+
+    // The job answers as paused: the sheet says so, offers Resume, and the bar
+    // stays put at the fill it reached instead of vanishing.
+    expect(await screen.findByText("Paused — 12 of 72 frames analysed")).toBeTruthy();
+    const bar = screen.getByRole("progressbar", { name: "Cull progress" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("17");
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+
+    const resumed = jobOf({ status: "running", stage: "analyzing", done: 13,
+                            message: "Analysed 13 of 72 photos" });
+    api.resumeScan.mockResolvedValue(resumed);
+    fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+
+    await waitFor(() => expect(api.resumeScan).toHaveBeenCalledWith(1));
+    expect(await screen.findByRole("button", { name: "Pause" })).toBeTruthy();
   });
 
   it("goes back to no-frames-match once the scan has finished", async () => {

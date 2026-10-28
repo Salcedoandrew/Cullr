@@ -7,9 +7,15 @@ interface Props {
   busy: boolean;
   onOpenCull: () => void;
   onExport: () => void;
+  onPause: () => void;
+  onResume: () => void;
 }
 
-export function TopBar({ library, stats, job, busy, onOpenCull, onExport }: Props) {
+export function TopBar({
+  library, stats, job, busy, onOpenCull, onExport, onPause, onResume,
+}: Props) {
+  const paused = job?.status === "paused";
+
   return (
     <header className="topbar">
       <div className="topbar__identity">
@@ -29,6 +35,16 @@ export function TopBar({ library, stats, job, busy, onOpenCull, onExport }: Prop
       </div>
 
       <div className="topbar__actions">
+        {busy && (
+          <button type="button" className="button" onClick={onPause}>
+            Pause
+          </button>
+        )}
+        {paused && (
+          <button type="button" className="button button--primary" onClick={onResume}>
+            Resume
+          </button>
+        )}
         <button type="button" className="button" onClick={onOpenCull}>
           Cull settings
         </button>
@@ -37,13 +53,14 @@ export function TopBar({ library, stats, job, busy, onOpenCull, onExport }: Prop
         </button>
       </div>
 
-      {job && job.status === "running" && (
+      {job && (job.status === "running" || paused) && (
         // The bar for this lives on the window's bottom edge; here it is only
         // the sentence, so the same number is not drawn twice.
         <div className="progress" role="status" aria-live="polite">
           <p>
-            {job.message ?? job.stage}
-            {job.total > 0 && ` · ${job.done}/${job.total}`}
+            {paused
+              ? job.message ?? "Paused"
+              : `${job.message ?? job.stage}${job.total > 0 ? ` · ${job.done}/${job.total}` : ""}`}
           </p>
         </div>
       )}

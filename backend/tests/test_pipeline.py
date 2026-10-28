@@ -292,3 +292,69 @@ def test_target_cut_uses_the_same_ranking_as_best_of_group():
     capped = cull_to_target(updates, 0.5, set(), signals)
     assert [row[6] for row in capped if row[1] == "keep"] == [2]
     assert any(row[2] == "target" for row in capped)
+
+
+def test_pause_stops_at_a_frame_boundary_and_resumes_without_redoing_work(
+        store, tmp_path, photo_dir):
+    """Pause is cooperative, keeps what finished, and resumes where it stopped."""
+    import shutil
+    import threading
+
+    # More frames than workers, so some are still lining up when Pause lands and
+    # the scan really stops part-way rather than at the last frame.
+    folder = tmp_path / "bursts"
+    folder.mkdir()
+    for repeat in range(4):
+        for shot in photo_dir.iterdir():
+            shutil.copy2(shot, folder / f"{repeat}-{shot.name}")
+
+    library = store.create_or_get_library(str(folder))
+    pause = threading.Event()
+    gate = threading.Lock()
+    analysed = {"n": 0}
+
+    real = run_scan.__globals__["analyse_file"]
+
+    def pausing_analyse(*args, **kwargs):
+        outcome = real(*args, **kwargs)
+        with gate:
+            analysed["n"] += 1
+            if analysed["n"] == 1:
+                pause.set()
+        return outcome
+
+    run_scan.__globals__["analyse_file"] = pausing_analyse
+    try:
+        paused = run_scan(store, library["id"], CullingSettings(), pause_event=pause)
+    finally:
+        run_scan.__globals__["analyse_file"] = real
+
+    assert paused.paused is True
+    assert paused.cancelled is False
+    assert 0 < paused.analysed < paused.total, "stopped part-way, keeping its work"
+    # Grouping and selection never ran, so nothing was decided off a half-read
+    # shoot: rows keep the schema's placeholder verdict and no quality at all.
+    assert paused.keepers == 0
+    assert all(row["quality"] is None for row in store.photos(library["id"]))
+
+    resumed = run_scan(store, library["id"], CullingSettings())
+    assert resumed.paused is False
+    # Every frame the pause had already analysed is reused, not read again.
+    assert resumed.reused == paused.analysed
+    assert resumed.analysed == resumed.total - resumed.reused
+    assert resumed.keepers > 0
+    assert all(row["quality"] is not None for row in store.photos(library["id"]))
+
+
+def test_pause_before_the_first_frame_analyses_nothing(store, photo_dir):
+    import threading
+
+    library = store.create_or_get_library(str(photo_dir))
+    pause = threading.Event()
+    pause.set()
+
+    result = run_scan(store, library["id"], CullingSettings(), pause_event=pause)
+
+    assert result.paused is True
+    assert result.analysed == 0
+    assert result.total == 6

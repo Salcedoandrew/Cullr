@@ -19,7 +19,7 @@ def wait_for_scan(client: TestClient, library_id: int, timeout: float = 120.0) -
     deadline = time.time() + timeout
     while time.time() < deadline:
         job = client.get(f"/api/libraries/{library_id}/job").json()
-        if job.get("status") in ("done", "error", "cancelled"):
+        if job.get("status") in ("done", "error", "cancelled", "paused"):
             return job
         time.sleep(0.2)
     raise AssertionError("scan did not finish in time")
@@ -157,6 +157,41 @@ def test_second_scan_is_rejected_while_one_is_running(client, photo_dir, monkeyp
     second = client.post(f"/api/libraries/{library_id}/scan", json={})
     assert second.status_code == 409
     wait_for_scan(client, library_id)
+
+
+def test_a_running_scan_can_be_paused_and_then_resumed(client, photo_dir, monkeypatch):
+    """Pause leaves a resumable job, and resume finishes it."""
+    import culler.api as api_module
+
+    library = client.post("/api/libraries", json={"path": str(photo_dir)}).json()
+    library_id = library["id"]
+
+    original = api_module.run_scan
+
+    def slow_scan(*args, **kwargs):
+        time.sleep(0.8)          # a window wide enough to press Pause in
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(api_module, "run_scan", slow_scan)
+
+    job = client.post(f"/api/libraries/{library_id}/scan", json={}).json()
+    assert client.post(f"/api/jobs/{job['id']}/pause").status_code == 200
+
+    paused = wait_for_scan(client, library_id)
+    assert paused["status"] == "paused"
+    assert paused["stage"] == "paused"
+    assert paused["message"].startswith("Paused")
+    # Not a verdict, not a failure, and nothing was decided off a half-read shoot.
+    assert paused["error"] is None
+    assert client.post(f"/api/jobs/{job['id']}/pause").status_code == 409
+
+    resumed = client.post(f"/api/libraries/{library_id}/resume").json()
+    assert resumed["id"] != job["id"]
+    assert resumed["status"] == "running"
+
+    done = wait_for_scan(client, library_id)
+    assert done["status"] == "done"
+    assert done["total"] == 6
 
 
 def _seed_faces(store, library_id: int, photo_ids: list[int], vectors) -> list[int]:
