@@ -199,16 +199,20 @@ port that closes with the window.
 
 ### Export
 
-* **XMP sidecars** with `xmp:Rating`/`xmp:Label` (originals untouched), **keeper
-  copies** into a delivery folder, or a **CSV report** of every decision and reason.
-* **Finder-style destination panel** — places sidebar (recents, favourites, network
-  shares, volumes), an icon or list browser with real thumbnails, item counts and
-  image dimensions, a breadcrumb menu, search, and **New Folder** — a name
-  prompt, like Finder's, naming the folder it will live in; styled with the
-  system's materials rather than the app's palette.
-* **Remembered per shoot** — each shoot's last export mode and folder are stored in
+* **Export to a folder** — keeper copies into a delivery folder (originals
+  untouched), chosen in a **Finder-style destination panel** — places sidebar
+  (recents, favourites, network shares, volumes), an icon or list browser with
+  real thumbnails, item counts and image dimensions, a breadcrumb menu, search,
+  and **New Folder** — a name prompt, like Finder's, naming the folder it will
+  live in; styled with the system's materials rather than the app's palette.
+* **Lightroom Classic** — writes XMP sidecars with `xmp:Rating`/`xmp:Label` next
+  to every frame, so Lightroom Classic picks the ratings and labels up on import,
+  or on Metadata → Read Metadata from Files for photos already imported. It
+  does not write Lightroom's catalog file itself. XMP sidecars and a CSV report
+  remain available from the headless CLI.
+* **Remembered per shoot** — each shoot's last export folder is stored in
   the catalog, so the choice follows the shoot rather than one browser.
-* **Says no when there is nothing to say yes to** — "Copy keepers to a folder" is
+* **Says no when there is nothing to say yes to** — "Export to a folder" is
   disabled, with the reason, on a shoot that kept nothing, and the destination
   picker opens at this shoot's remembered folder, the last delivery folder used
   anywhere, or Home — never inside the shoot you are delivering from.

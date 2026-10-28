@@ -5,9 +5,9 @@ import { FolderPicker } from "./FolderPicker";
 
 interface Props {
   libraryId: number;
-  /** The scan's counts. The panel needs them: "copy keepers" is meaningless on
-   *  a shoot with none, and sidecars are worse than meaningless when nothing
-   *  could be read. */
+  /** The scan's counts. The panel needs them: "export to a folder" is
+   *  meaningless on a shoot with no keepers, and sidecars are worse than
+   *  meaningless when nothing could be read. */
   stats: Stats | null;
   remembered?: ExportMemory | null;
   onRemembered?: (value: ExportMemory) => void;
@@ -36,35 +36,16 @@ function rememberLastDestination(path: string): void {
   }
 }
 
-type Mode = "sidecar" | "sidecar_all" | "copy" | "csv";
-
-const MODES: { key: Mode; label: string; help: string; needsDest: boolean }[] = [
-  {
-    key: "sidecar",
-    label: "XMP sidecars for RAW files",
-    help: "Writes <file>.xmp next to each RAW. Ratings travel with the file into Lightroom or Capture One.",
-    needsDest: false,
-  },
-  {
-    key: "sidecar_all",
-    label: "XMP sidecars for every file",
-    help: "Same as above, including JPEG and TIFF. Only useful if your editor reads external sidecars for those formats.",
-    needsDest: false,
-  },
-  {
-    key: "copy",
-    label: "Copy keepers to a folder",
-    help: "Copies every kept frame, leaving the originals untouched.",
-    needsDest: true,
-  },
-  {
-    key: "csv",
-    label: "Culling report (CSV)",
-    help: "One row per frame with the decision, reason and measured quality.",
-    needsDest: true,
-  },
-];
-
+/* The panel offers two methods only: a folder copy, and Lightroom Classic.
+   The backend and the headless CLI still offer XMP sidecars and a CSV report
+   directly, but they are no longer rows in this panel. And "Lightroom Classic"
+   here is deliberately not a .lrcat writer: Lightroom's catalog format is
+   undocumented and versioned, and writing it by hand risks a catalog
+   Lightroom refuses or, worse, quietly repairs. The interchange Aftershoot
+   itself documents is XMP sidecars -- Lightroom reads them on import, or on
+   Metadata -> Read Metadata from Files for photos already imported -- so
+   this action writes sidecars for every frame (the sidecar_all mode) and
+   says exactly that, rather than pretending a catalog was written. */
 export function ExportPanel({
   libraryId, stats, remembered, onRemembered, onClose,
 }: Props) {
@@ -79,26 +60,17 @@ export function ExportPanel({
 
   // The catalog carries the last export for this shoot, so a different browser
   // (or a restart) opens on the same destination.
-  const rememberedMode = MODES.find((item) => item.key === remembered?.mode)?.key;
-  const [mode, setMode] = useState<Mode>(
-    // A remembered "copy" on a shoot that kept nothing would open on a mode it
-    // cannot run, so the panel opens on the sidecars instead.
-    rememberedMode === "copy" && keepers === 0 ? "sidecar" : rememberedMode ?? "sidecar",
-  );
   const [dest, setDest] = useState(remembered?.dest ?? "");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const selected = MODES.find((item) => item.key === mode)!;
-  const isCopy = mode === "copy";
-  const actionLabel = isCopy ? "Copy to folder" : mode === "csv" ? "Write report" : "Write sidecars";
 
-  const run = async () => {
+  const run = async (mode: "copy" | "sidecar_all", destArg?: string) => {
     setBusy(true);
     setError(null);
     try {
-      const response = await api.export(libraryId, mode, dest || undefined);
+      const response = await api.export(libraryId, mode, destArg || undefined);
       const parts = [
         response.written ? `${response.written} written` : null,
         response.copied ? `${response.copied} copied` : null,
@@ -106,12 +78,19 @@ export function ExportPanel({
       ].filter(Boolean);
       setResult(parts.join(", ") || "Nothing to export");
       if (response.errors.length) setError(response.errors[0]);
-      // The server stores this too; mirror it so the hint and a reopened panel
-      // agree inside this session.
-      onRemembered?.({ mode, dest: dest.trim() });
-      // Only a destination that was actually exported to becomes the default
-      // for the next shoot: an abandoned pick should not move it.
-      if (dest.trim() && !response.errors.length) rememberLastDestination(dest.trim());
+      if (mode === "copy") {
+        // The server stores this too; mirror it so the hint and a reopened
+        // panel agree inside this session.
+        onRemembered?.({ mode, dest: (destArg ?? "").trim() });
+        // Only a destination that was actually exported to becomes the
+        // default for the next shoot: an abandoned pick should not move it.
+        if (destArg?.trim() && !response.errors.length) {
+          rememberLastDestination(destArg.trim());
+        }
+      }
+      // A Lightroom run must not overwrite the remembered folder destination:
+      // it has none, and the next folder export should still open where the
+      // last folder export went.
     } catch (event) {
       setError(event instanceof Error ? event.message : String(event));
     } finally {
@@ -119,109 +98,99 @@ export function ExportPanel({
     }
   };
 
+  const title = total > 0 ? `Export ${total} Photos` : "Export Photos";
+
   return (
-    <div className="modal" role="dialog" aria-modal="true" aria-label="Export decisions">
-      <div className="modal__body">
-        <header className="modal__head">
-          <h2>Export decisions</h2>
-          <button type="button" className="loupe__close loupe__close--inline" onClick={onClose} aria-label="Close">
+    <div className="modal" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="modal__body export-panel">
+        <header className="export-panel__head">
+          <div>
+            <h2>{title}</h2>
+            {stats && (
+              <p className="export-panel__counts">
+                {keepers} keeper{keepers === 1 ? "" : "s"}, {rejected} rejected
+                {stats.errors > 0 ? `, ${stats.errors} unreadable` : ""}
+              </p>
+            )}
+          </div>
+          <button type="button" className="export-panel__close" onClick={onClose} aria-label="Close">
             ×
           </button>
         </header>
+        <p className="export-panel__intro">Choose a method to export</p>
 
-        {stats && (
-          <p className="modal__hint export-counts">
-            {keepers} keeper{keepers === 1 ? "" : "s"}, {rejected} rejected
-            {stats.errors > 0 ? `, ${stats.errors} unreadable` : ""}
-          </p>
-        )}
-
-        <fieldset className="export-modes">
-          {MODES.map((item) => {
-            // Copying nothing used to look exactly like copying 3,000 keepers:
-            // the mode ran, reported "Nothing to export", and left the user to
-            // work out why.
-            const empty = item.key === "copy" && !hasKeepers;
-            const unjudged = item.key !== "copy" && item.key !== "csv" && nothingRead;
-            return (
-              <label key={item.key}
-                     className={mode === item.key ? "export-mode is-on" : "export-mode"}>
-                <input
-                  type="radio"
-                  name="mode"
-                  value={item.key}
-                  checked={mode === item.key}
-                  onChange={() => setMode(item.key)}
-                  disabled={empty}
-                />
-                <span>
-                  <strong>{item.label}</strong>
-                  <em>{item.help}</em>
-                  {empty && (
-                    <em className="export-mode__warn">
-                      No keepers to copy — this cull kept 0 frames.
-                    </em>
-                  )}
-                  {unjudged && (
-                    <em className="export-mode__warn">
-                      Nothing in this shoot could be read, so these sidecars would
-                      mark frames that were never evaluated. Fix the unreadable
-                      files first.
-                    </em>
-                  )}
-                </span>
-              </label>
-            );
-          })}
-        </fieldset>
-
-        {selected.needsDest && (
-          <div className="modal__field">
-            <label htmlFor="export-dest">
-              {mode === "copy" ? "Destination folder" : "Destination"}
-            </label>
-            <div className="field-with-button">
+        <section className="export-panel__section">
+          <h3>Export to a folder</h3>
+          <p>Choose where you want to move / copy your photos</p>
+          <div className="export-panel__field">
+            <label htmlFor="export-dest">Destination folder</label>
+            <div className="export-panel__fieldrow">
               <input
                 id="export-dest"
                 value={dest}
                 onChange={(event) => setDest(event.target.value)}
-                placeholder={mode === "copy" ? "/Users/you/Pictures/delivery" : "/Users/you/Desktop"}
+                placeholder="/Users/you/Pictures/delivery"
                 spellCheck={false}
               />
               <button
                 type="button"
-                className="button field-with-button__action"
+                className="export-panel__select"
                 onClick={() => setPicking(true)}
               >
                 Select a folder
               </button>
             </div>
-            <p className="modal__hint">
-              {mode === "copy"
-                ? "Every keeper is copied here; originals stay where they are."
-                : "The report is written into this folder as culling-report.csv."}
+            <p className="export-panel__hint">
+              Every keeper is copied here; originals stay where they are.
               {remembered?.dest === dest.trim() && dest.trim() !== ""
                 ? " Prefilled from this shoot's last export."
                 : null}
             </p>
+            {!hasKeepers && (
+              <p className="export-panel__warn">
+                No keepers to copy — this cull kept 0 frames.
+              </p>
+            )}
           </div>
-        )}
-
-        <div className="modal__actions">
           <button
             type="button"
-            className="button button--primary"
-            onClick={() => void run()}
-            disabled={busy || (selected.needsDest && !dest.trim())
-              || (mode === "copy" && !hasKeepers)}
+            className="export-panel__primary"
+            onClick={() => void run("copy", dest)}
+            disabled={busy || !dest.trim() || !hasKeepers}
           >
-            {busy ? "Working…" : actionLabel}
+            {busy ? "Working…" : "Export to a folder"}
           </button>
-        </div>
+        </section>
+
+        <section className="export-panel__section">
+          <h3>One click export</h3>
+          <p>Already have these photos in Lightroom Classic?</p>
+          <button
+            type="button"
+            className="export-panel__tile"
+            onClick={() => void run("sidecar_all")}
+            disabled={busy || nothingRead}
+          >
+            <strong>Lightroom Classic</strong>
+          </button>
+          <p className="export-panel__hint">
+            Writes XMP sidecars next to every frame with Cullr&apos;s ratings and
+            labels. In Lightroom Classic, import the shoot — or, if it is already
+            imported, choose Metadata → Read Metadata from Files. This does not
+            write Lightroom&apos;s catalog file itself.
+          </p>
+          {nothingRead && (
+            <p className="export-panel__warn">
+              Nothing in this shoot could be read, so these sidecars would
+              mark frames that were never evaluated. Fix the unreadable
+              files first.
+            </p>
+          )}
+        </section>
 
         {picking && (
           <FolderPicker
-            title={isCopy ? "Copy keepers to" : "Write the report in"}
+            title="Copy keepers to"
             // Not the shoot folder: the destination is a delivery folder, and
             // the last one used beats guessing. Home is the fallback, so the
             // picker never opens inside the shoot by accident.
@@ -236,8 +205,8 @@ export function ExportPanel({
           />
         )}
 
-        {result && <p className="modal__result">{result}</p>}
-        {error && <p className="modal__error">{error}</p>}
+        {result && <p className="export-panel__result">{result}</p>}
+        {error && <p className="export-panel__error">{error}</p>}
       </div>
     </div>
   );
