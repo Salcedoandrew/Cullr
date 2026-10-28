@@ -48,6 +48,19 @@ def manifest(**overrides) -> dict:
     return payload
 
 
+def next_release() -> str:
+    """The version a newer release would carry, derived from this build.
+
+    These tests used to hand the manager a manifest pinned at ``0.10.0`` while
+    the app was ``0.9.0``. The bump to 0.10.0 turned every one of them into
+    "the app is up to date" without changing a line of the feature — which is
+    what the release build's own test run caught. Deriving it keeps the offered
+    release ahead of ``update.__version__`` through every bump.
+    """
+    major, minor, _patch = update.parse_version(update.__version__)
+    return f"{major}.{minor + 1}.0"
+
+
 # ---- version comparison -------------------------------------------------- #
 
 
@@ -293,7 +306,7 @@ def test_install_refuses_to_quit_for_a_bundle_it_cannot_replace(tmp_path, monkey
     monkeypatch.setattr(update.subprocess, "Popen",
                         lambda *a, **k: pytest.fail("nothing may be launched"))
     manager = _manager(tmp_path, fetcher=lambda url: update.validate_manifest(
-        manifest(version="0.10.0", sha256=digest)), downloader=downloader)
+        manifest(version=next_release(), sha256=digest)), downloader=downloader)
     manager.check()
     manager.start_download()
     for _ in range(100):
@@ -358,10 +371,10 @@ def test_check_reports_no_update_for_the_running_version(tmp_path):
 
 def test_check_reports_a_newer_version(tmp_path):
     manager = _manager(tmp_path,
-                       fetcher=lambda url: update.validate_manifest(manifest(version="0.10.0")))
+                       fetcher=lambda url: update.validate_manifest(manifest(version=next_release())))
     state = manager.check()
     assert state["phase"] == "available"
-    assert state["latest"] == "0.10.0"
+    assert state["latest"] == next_release()
     assert state["filename"] == "Cullr-0.9.0-arm64.dmg"
 
 
@@ -389,7 +402,7 @@ def test_download_then_cancel_deletes_the_file(tmp_path):
         return path
 
     manager = _manager(tmp_path, fetcher=lambda url: update.validate_manifest(
-        manifest(version="0.10.0")), downloader=downloader)
+        manifest(version=next_release())), downloader=downloader)
     manager.check()
     manager.start_download()
     for _ in range(100):                        # the download runs on a thread
@@ -428,7 +441,7 @@ def test_install_launches_a_detached_helper_and_then_quits(tmp_path, monkeypatch
                         lambda args, **kwargs: spawned.append((args, kwargs)))
     target = _fake_bundle(tmp_path / "Applications")
     manager = _manager(tmp_path, fetcher=lambda url: update.validate_manifest(
-        manifest(version="0.10.0", sha256=digest)), downloader=downloader, app_path=target)
+        manifest(version=next_release(), sha256=digest)), downloader=downloader, app_path=target)
     manager.check()
     manager.start_download()
     for _ in range(100):
@@ -462,7 +475,7 @@ def test_install_deletes_a_file_that_changed_after_verification(tmp_path, monkey
     monkeypatch.setattr(update.subprocess, "Popen",
                         lambda *a, **k: pytest.fail("nothing may be installed"))
     manager = _manager(tmp_path, fetcher=lambda url: update.validate_manifest(
-        manifest(version="0.10.0", sha256=digest)), downloader=downloader,
+        manifest(version=next_release(), sha256=digest)), downloader=downloader,
         app_path=tmp_path / "Applications")
     manager.check()
     manager.start_download()
@@ -485,7 +498,7 @@ def test_install_deletes_a_file_that_changed_after_verification(tmp_path, monkey
 def test_update_endpoints_drive_the_state_machine(tmp_path, photo_dir):
     app = create_app(tmp_path / "data")
     updates = app.state.updates
-    updates._fetcher = lambda url: update.validate_manifest(manifest(version="0.10.0"))
+    updates._fetcher = lambda url: update.validate_manifest(manifest(version=next_release()))
 
     def downloader(url, sha, filename, dest_dir, progress, cancel):
         path = Path(dest_dir) / filename
@@ -500,7 +513,7 @@ def test_update_endpoints_drive_the_state_machine(tmp_path, photo_dir):
 
         checked = client.post("/api/update/check").json()
         assert checked["phase"] == "available"
-        assert checked["latest"] == "0.10.0"
+        assert checked["latest"] == next_release()
 
         # The stub download finishes instantly, so the first answer is either
         # "downloading" or already "ready"; the state the feature promises is
@@ -522,7 +535,7 @@ def test_install_over_the_api_asks_the_desktop_app_to_quit(tmp_path):
     payload = b"a disk image"
     digest = hashlib.sha256(payload).hexdigest()
     updates._fetcher = lambda url: update.validate_manifest(
-        manifest(version="0.10.0", sha256=digest))
+        manifest(version=next_release(), sha256=digest))
     updates._app_path = _fake_bundle(tmp_path / "Applications")
     updates._app_resolved = True
 
