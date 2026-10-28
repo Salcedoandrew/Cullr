@@ -207,11 +207,6 @@ const keepField = (dialog: HTMLElement) =>
 const cullSettings = () =>
   within(screen.getByRole("banner")).getByRole("button", { name: "Cull settings" });
 
-// The amount control lives on the Cull to Target tab; Auto Target shows the
-// selection-strictness stops instead. The count is unchanged either way.
-const openTargetTab = (dialog: HTMLElement) =>
-  fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
-
 beforeEach(() => {
   vi.clearAllMocks();
   // The picker's recents and the last export destination live in localStorage,
@@ -263,7 +258,6 @@ describe("the cull options count", () => {
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
     // The refresh has landed by now — that is the moment the count used to vanish.
     await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
-    openTargetTab(dialog);
     expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
     expect(keepField(dialog).value).toBe("14");
   });
@@ -280,7 +274,6 @@ describe("the cull options count", () => {
     fireEvent.click(cullSettings());
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
-    openTargetTab(dialog);
     expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
     expect(keepField(dialog).value).toBe("14");
   });
@@ -308,7 +301,6 @@ describe("the cull options count", () => {
     fireEvent.click(cullSettings());
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
-    openTargetTab(dialog);
     expect(within(dialog).getByText("~20% of 5 photos")).toBeTruthy();
     expect(keepField(dialog).value).toBe("1");
   });
@@ -324,7 +316,6 @@ describe("the cull options count", () => {
     fireEvent.click(cullSettings());
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
-    openTargetTab(dialog);
     expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
     expect(keepField(dialog).value).toBe("14");
     // A scan already knows the number, so the folder is not walked again.
@@ -342,7 +333,6 @@ describe("the cull options count", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
-    openTargetTab(dialog);
     // Percent only: no total is claimed, the field stays at 0, nothing errors.
     expect(within(dialog).getByText("~20%")).toBeTruthy();
     expect(within(dialog).queryByText(/of [\d,]+ photos/)).toBeNull();
@@ -351,8 +341,8 @@ describe("the cull options count", () => {
   });
 });
 
-describe("the Auto Target selection strictness", () => {
-  it("shows the named stops and swaps itself for the amount control", async () => {
+describe("the cull amount control", () => {
+  it("is the only mode now: no mode tabs, no selection-strictness slider", async () => {
     api.libraries.mockResolvedValue([library({ id: 1 })]);
     api.discover.mockResolvedValue({ total: TOTAL });
 
@@ -362,20 +352,34 @@ describe("the Auto Target selection strictness", () => {
 
     fireEvent.click(cullSettings());
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
-    const slider = within(dialog).getByLabelText(
-      "Selection strictness: extreme to more") as HTMLInputElement;
 
-    // The wedding preset's own 35 is the STANDARD stop, so an untouched shoot
-    // opens reading the preset rather than an invented value.
-    expect(slider.value).toBe("2");
-    expect(slider.getAttribute("aria-valuetext")).toBe("STANDARD");
-
-    fireEvent.change(slider, { target: { value: "0" } });
-    expect(slider.getAttribute("aria-valuetext")).toBe("EXTREME");
-
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
+    // Auto Target was removed on purpose; nothing should offer it back.
+    expect(within(dialog).queryByRole("tablist")).toBeNull();
+    expect(within(dialog).queryByRole("tab")).toBeNull();
     expect(within(dialog).queryByLabelText("Selection strictness: extreme to more"))
       .toBeNull();
+
+    expect(within(dialog).getByLabelText("Target percentage")).toBeTruthy();
+    expect(within(dialog).getByText(`~20% of ${TOTAL} photos`)).toBeTruthy();
+  });
+
+  it("sends a target even when the stored settings had none", async () => {
+    // target_ratio null used to mean "let the gates decide"; the scan must now
+    // run the ratio the dialog is showing, not silently fall back to gates-only.
+    api.libraries.mockResolvedValue([library({ id: 1 })]);
+    api.discover.mockResolvedValue({ total: TOTAL });
+    api.scan.mockResolvedValue({ id: 1, status: "running", stage: "scan" });
+
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
+    fireEvent.click(cullSettings());
+    const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
+
+    await waitFor(() => expect(api.scan).toHaveBeenCalled());
+    expect(api.scan.mock.calls[0][1].target_ratio).toBeCloseTo(0.2);
   });
 });
 
@@ -452,7 +456,6 @@ describe("the target slider callout", () => {
     await waitFor(() => expect(api.discover).toHaveBeenCalledWith(1));
     fireEvent.click(cullSettings());
     const dialog = await screen.findByRole("dialog", { name: "AI Automated Cull" });
-    fireEvent.click(within(dialog).getByRole("tab", { name: "Cull to Target" }));
 
     const slider = within(dialog).getByLabelText("Target percentage");
     const staticHelp = dialog.querySelector(".cull__help")?.textContent ?? "";

@@ -8,12 +8,11 @@ import type {
  * The pre-cull window: what kind of shoot this is, how many frames to keep, and
  * the advanced gates behind a disclosure.
  *
- * Two modes, and they answer different questions:
- *
- *  · "Auto target" asks *is this frame acceptable* — the quality gates decide.
- *  · "Cull to target" asks *how many frames do I want* — keepers are
- *    ranked by measured quality and cut at the target. Coverage still wins, so
- *    someone in the shoot is never dropped to hit a number.
+ * One question: *how many frames do I want?* Keepers are ranked by measured
+ * quality and cut at the target. Coverage still wins, so someone in the shoot
+ * is never dropped to hit a number. The gates-only "Auto Target" mode is gone:
+ * it answered a question this dialog no longer asks, and the count control is
+ * the only one that was ever tuned against a real shoot.
  */
 
 interface Props {
@@ -197,7 +196,6 @@ export function CullDialog({
   // discovered count. Only a scanned total above 0 wins.
   const total = stats?.total ? stats.total : (discoveredTotal ?? 0);
 
-  const [targetMode, setTargetMode] = useState(settings.target_ratio !== null);
   const [ratio, setRatio] = useState(settings.target_ratio ?? DEFAULT_RATIO);
   // The scene model is downloaded from here on first use; the dialog polls
   // its progress and unlocks Start Cull when the file is installed.
@@ -223,6 +221,16 @@ export function CullDialog({
   useEffect(() => {
     dialog.current?.focus();
   }, []);
+
+  // The target is the only count control now, so a library whose stored
+  // settings still say "let the gates decide" (target_ratio null) is given the
+  // ratio the slider shows. Without this the dialog and the scan would disagree
+  // about what Start Cull is going to do.
+  useEffect(() => {
+    if (settings.target_ratio === null) {
+      onChange({ ...settings, target_ratio: DEFAULT_RATIO });
+    }
+  }, [settings, onChange]);
 
   useEffect(() => {
     // Capture phase: Escape must not reach the review loop behind the sheet.
@@ -254,36 +262,13 @@ export function CullDialog({
     if (!value) setSemantic(null);
   };
 
-  // Auto Target's own control: the overall selection strictness as four named
-  // stops, never a raw number. The nearest stop to the effective value is the
-  // one shown, so an untouched library reads the preset's own strictness.
-  const stops = capabilities.strictness_stops ?? [];
-  const effectiveSelection = settings.selection_strictness ?? preset?.strictness ?? 50;
-  const stopIndex = stops.reduce(
-    (best, stop, index) =>
-      Math.abs(stop.value - effectiveSelection) < Math.abs(stops[best].value - effectiveSelection)
-        ? index
-        : best,
-    0,
-  );
-  const stop = stops[stopIndex];
-  const chooseStop = (index: number) => {
-    const next = stops[index];
-    if (next) onChange({ ...settings, selection_strictness: next.value });
-  };
-
   const clampRatio = (value: number) =>
     Math.min(MAX_PERCENT / 100, Math.max(MIN_PERCENT / 100, value));
 
   const setTarget = (value: number) => {
     const next = clampRatio(value);
     setRatio(next);
-    if (targetMode) onChange({ ...settings, target_ratio: next });
-  };
-
-  const chooseMode = (target: boolean) => {
-    setTargetMode(target);
-    onChange({ ...settings, target_ratio: target ? clampRatio(ratio) : null });
+    onChange({ ...settings, target_ratio: next });
   };
 
   const helper = useMemo(() => helperText(ratio), [ratio]);
@@ -459,62 +444,7 @@ export function CullDialog({
           </p>
         )}
 
-        <section className={`cull__card${targetMode ? "" : " is-auto"}`}>
-          <div className="cull__modes" role="tablist" aria-label="Culling mode">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={!targetMode}
-              className={`cull__mode${targetMode ? "" : " is-on"}`}
-              onClick={() => chooseMode(false)}
-            >
-              Auto Target
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={targetMode}
-              className={`cull__mode${targetMode ? " is-on" : ""}`}
-              onClick={() => chooseMode(true)}
-            >
-              Cull to Target
-            </button>
-          </div>
-
-          {!targetMode && stop && (
-            <div className="cull__selection">
-              <div className="cull__target-head">
-                <span className="cull__target-label">
-                  Set selection strictness
-                  <span
-                    className="cull__info"
-                    title="How picky the cull is: EXTREME keeps only the strongest frames, MORE keeps anything that passes the quality gates."
-                  >
-                    <InfoDot />
-                  </span>
-                </span>
-                <span className="cull__stop-name">{stop.label}</span>
-              </div>
-              <div className="cull__slider">
-                <input
-                  type="range"
-                  min={0}
-                  max={Math.max(0, stops.length - 1)}
-                  step={1}
-                  value={stopIndex}
-                  aria-label="Selection strictness: extreme to more"
-                  aria-valuetext={stop.label}
-                  onChange={(event) => chooseStop(Number(event.target.value))}
-                />
-              </div>
-              <div className="cull__scale">
-                <span>{stops[0].label}</span>
-                <span>{stops[stops.length - 1].label}</span>
-              </div>
-            </div>
-          )}
-
-          {targetMode ? (
+        <section className="cull__card">
           <div className="cull__target">
             <div className="cull__target-head">
               <span className="cull__target-label">
@@ -582,13 +512,6 @@ export function CullDialog({
               </p>
             )}
           </div>
-          ) : (
-            <p className="cull__help">
-              <span className="cull__help-icon"><InfoDot /></span>
-              Auto Target keeps every frame that passes the quality gates — sharp,
-              open eyes, one per burst. Pick Cull to Target to also cap the count.
-            </p>
-          )}
         </section>
 
         <details className="cull__customize">

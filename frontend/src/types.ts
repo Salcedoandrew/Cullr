@@ -4,8 +4,8 @@ export type Reason =
   | "underexposed"
   | "closed_eyes"
   | "duplicate"
-  // Both count controls: the cull-to-target cap and the Auto Target stop's trim.
-  // The backend has emitted it all along (and `reasonLabel` already names it).
+  // The cull-to-target cap cut this frame. The backend has emitted it all along
+  // (and `reasonLabel` already names it).
   | "target"
   | "unreadable"
   | null;
@@ -170,7 +170,10 @@ export interface Settings {
   preset: string;
   /** Blur-only strictness (the slider under Detect Blurry Photos). */
   strictness: number | null;
-  /** Auto Target's overall selection strictness; null = the preset's value. */
+  /**
+   * The old Auto Target stop's trim. Nothing in the UI sets it since the mode
+   * was removed; the field stays because the API and the CLI still accept it.
+   */
   selection_strictness: number | null;
   keep_min_per_group: number | null;
   detect_blinks: boolean;
@@ -213,7 +216,7 @@ export interface RatingEntry {
 
 export type RatingScheme = Record<RatingCategory, RatingEntry>;
 
-/** One stop on the Auto Target "Set selection strictness" scale. */
+/** One stop on the removed Auto Target "Set selection strictness" scale. */
 export interface StrictnessStop {
   key: string;
   label: string;

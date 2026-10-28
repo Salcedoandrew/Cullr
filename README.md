@@ -126,23 +126,17 @@ port that closes with the window.
 * **Resumable, idempotent scans** — unchanged files are reused, human decisions
   survive a rescan, re-analysis is opt-in, and a running scan can be cancelled.
 
-### Culling modes
+### Culling
 
-* **Auto Target** — keeps every frame that passes the quality gates. It answers
-  "is this frame acceptable?", and *Set selection strictness* picks how picky:
-  **EXTREME / FEW / STANDARD / MORE**, named stops rather than a raw 0–100.
-  A stop also trims to a share of the frames that passed the gates, ranked by
-  composite quality, because the gates alone cannot move a shoot's keeper count
-  — they admit a frame, and best-of-group then demotes most of it. Measured on a
-  5,745-frame wedding: EXTREME 288 kept (5.0 %), FEW 532 (9.3 %), STANDARD 847
-  (14.7 %, the rate that photographer kept by hand), MORE 1,233 (21.5 %,
-  everything that passes). Untouched, a shoot follows the preset, as before.
-* **Cull to Target** — instead answers "how many frames do I want?" and stands
-  the stop's trim down, so the ratio is the only count control. Name
-  a percentage with the 10–60 % slider (live `≈14 % of 5,745 photos` readout) or
-  type the exact count (804); keepers are ranked by composite quality and cut at
-  the target, and the frames that lose are rejected as `Over target` rather than
-  silently dropped.
+* **Cull to Target** — the dialog asks one thing: "how many frames do I want?"
+  Name a percentage with the 10–60 % slider (live `≈14 % of 5,745 photos`
+  readout) or type the exact count (804); keepers are ranked by composite
+  quality and cut at the target, and the frames that lose are rejected as
+  `Over target` rather than silently dropped. The gates still decide what is
+  acceptable; this decides how many of the acceptable frames survive, which is
+  the count control that was tuned against a real shoot. The gates-only *Auto
+  Target* mode and its EXTREME / FEW / STANDARD / MORE stops were removed in
+  0.11.0 — one mode, one count.
 * **Coverage beats the number** — a frame that is someone's only keeper is never
   cut to reach a target, so 14 % of 5,745 can land slightly above 804.
 * **Customize** — detect duplicates (with the optional AI scene model),
