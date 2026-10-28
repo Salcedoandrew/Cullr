@@ -10,9 +10,6 @@ interface Props {
 }
 
 export function TopBar({ library, stats, job, busy, onOpenCull, onExport }: Props) {
-  const progress =
-    job && job.total > 0 ? Math.min(100, Math.round((job.done / job.total) * 100)) : null;
-
   return (
     <header className="topbar">
       <div className="topbar__identity">
@@ -41,10 +38,9 @@ export function TopBar({ library, stats, job, busy, onOpenCull, onExport }: Prop
       </div>
 
       {job && job.status === "running" && (
+        // The bar for this lives on the window's bottom edge; here it is only
+        // the sentence, so the same number is not drawn twice.
         <div className="progress" role="status" aria-live="polite">
-          <div className="progress__bar">
-            <span style={{ width: `${progress ?? 4}%` }} />
-          </div>
           <p>
             {job.message ?? job.stage}
             {job.total > 0 && ` · ${job.done}/${job.total}`}

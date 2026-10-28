@@ -96,6 +96,12 @@ export default function App() {
 
   const busy = job?.status === "running";
   const scanProgress = busy ? job?.message ?? job?.stage ?? "Scanning" : null;
+  /** How far the running cull has got, for the bar on the window's bottom edge.
+   *  Null until the job knows its total, which is the one case a bar cannot
+   *  honestly claim to be at 0 %. */
+  const cullPercent = busy && job && job.total > 0
+    ? Math.min(100, Math.round((job.done / job.total) * 100))
+    : null;
   /** A finished scan that could not read files: the one case where "0 keepers"
    *  is not an answer. Derived from the job row (re-read with the library), not
    *  from state the refresh would drop. */
@@ -567,6 +573,27 @@ export default function App() {
           Change folder
         </button>
       </footer>
+
+      {/* How far the cull has got, at the window's own edge. The top bar names
+          the stage ("Analysed 1,400 of 3,016"); this is the part that reads at
+          a glance while you are looking at the grid, not at the header. */}
+      {busy && (
+        <div
+          className={`cullbar${cullPercent === null ? " is-indeterminate" : ""}`}
+          role="progressbar"
+          aria-label="Cull progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={cullPercent ?? undefined}
+          aria-valuetext={
+            cullPercent === null
+              ? "Starting…"
+              : `${cullPercent}% — ${job?.message ?? job?.stage ?? "scanning"}`
+          }
+        >
+          <span style={cullPercent === null ? undefined : { width: `${cullPercent}%` }} />
+        </div>
+      )}
 
       {updatePanel}
 

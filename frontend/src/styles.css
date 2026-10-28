@@ -352,7 +352,8 @@ kbd {
 
 .app {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* header · body · shortcuts · the cull's progress bar */
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   height: 100%;
   overflow: hidden;
 }
@@ -2090,6 +2091,37 @@ kbd {
   font-size: 11.5px;
   color: var(--paper-dim);
   white-space: nowrap;
+}
+
+/* The running cull, at the window's bottom edge. The top bar says what is
+   happening in words; this is the version you can read at a glance while
+   looking at the grid. Only the fill is painted, so it reads as a rule that
+   fills rather than a second header. */
+.cullbar {
+  height: 5px;
+  background: var(--rule-soft);
+  overflow: hidden;
+}
+
+.cullbar span {
+  display: block;
+  height: 100%;
+  border-radius: 0 3px 3px 0;
+  background: var(--brass);
+  box-shadow: 0 0 10px rgba(217, 169, 95, 0.45);
+  transition: width 0.35s ease;
+}
+
+/* Before the job knows its total there is no honest percentage to draw, so the
+   bar says "working" instead of claiming 0 %. */
+.cullbar.is-indeterminate span {
+  width: 22%;
+  animation: cullbar-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes cullbar-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(460%); }
 }
 
 .app__body {

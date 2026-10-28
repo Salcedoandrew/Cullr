@@ -828,6 +828,15 @@ describe("the grid while a scan runs", () => {
     );
 
     expect(await screen.findByText(/frames appear here/)).toBeTruthy();
+
+    // The window's bottom edge shows how far the cull has got: 3 of 72 frames.
+    const bar = await screen.findByRole("progressbar", { name: "Cull progress" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("4");
+    expect(bar.getAttribute("aria-valuetext")).toMatch(/4% .*Analysed 3 of 72 photos/);
+    // It is the last thing in the window, below the keyboard hints.
+    const footer = screen.getByText(/next group/).closest("footer");
+    expect(footer?.nextElementSibling).toBe(bar);
+
     // The job never leaves "running" here, so tiles can only come from the
     // slower list refresh — the difference between a grid that fills in and one
     // that appears all at once when the scan ends.
@@ -856,9 +865,12 @@ describe("the grid while a scan runs", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Start Cull" }));
 
     expect(await screen.findByText(/frames appear here/)).toBeTruthy();
+    expect(screen.getByRole("progressbar", { name: "Cull progress" })).toBeTruthy();
     // Two 650 ms job polls away, so this needs more than the default timeout.
     expect(await screen.findByText("No frames match this filter.",
                                    {}, { timeout: 4000 })).toBeTruthy();
+    // A finished cull has nothing left to show progress for.
+    expect(screen.queryByRole("progressbar", { name: "Cull progress" })).toBeNull();
   });
 });
 
