@@ -4,7 +4,8 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type {
-  Capabilities, Job, Library, Photo, PhotoResponse, Settings, Stats,
+  Capabilities, FolderEntry, FolderListing, Job, Library, Photo, PhotoResponse,
+  Settings, Stats,
 } from "./types";
 
 /**
@@ -831,5 +832,71 @@ describe("the grid while a scan runs", () => {
     // Two 650 ms job polls away, so this needs more than the default timeout.
     expect(await screen.findByText("No frames match this filter.",
                                    {}, { timeout: 4000 })).toBeTruthy();
+  });
+});
+
+describe("the folder picker's search", () => {
+  const entry = (name: string, kind: "folder" | "file" = "folder"): FolderEntry => ({
+    name,
+    path: `/shoots/Katie/${name}`,
+    kind,
+  });
+  const pickerListing = (over: Partial<FolderListing> = {}): FolderListing => ({
+    path: "/shoots/Katie",
+    parent: "/shoots",
+    home: "/Users/you",
+    writable: true,
+    folders: [],
+    entries: [],
+    truncated: false,
+    limit: 400,
+    sidebar: { favorites: [], shared: [], locations: [] },
+    ...over,
+  });
+
+  async function openPicker() {
+    api.libraries.mockResolvedValue([library({ id: 1, photo_count: TOTAL })]);
+    api.photos.mockResolvedValue({
+      photos: [], total: TOTAL, stats: { ...statsOf(TOTAL), keep: 40, reject: 32 },
+    });
+    await renderApp();
+    fireEvent.click(screen.getByRole("button", { name: /Teasers/ }));
+    await waitFor(() => expect(api.photos).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    const panel = await screen.findByRole("dialog", { name: "Export decisions" });
+    fireEvent.click(within(panel).getByRole("radio", { name: /Copy keepers/ }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Select a folder" }));
+    return screen.findByRole("dialog", { name: "Copy keepers to" });
+  }
+
+  it("asks the server, so a name past the entry window is still findable", async () => {
+    // The window holds the first 400 names and "zzz-delivery" is not among
+    // them: filtering what was sent could never find it.
+    api.folders
+      .mockResolvedValueOnce(pickerListing({
+        truncated: true,
+        entries: [entry("shoot_0001"), entry("shoot_0002")],
+      }))
+      .mockResolvedValueOnce(pickerListing({ entries: [entry("zzz-delivery")] }));
+
+    const picker = await openPicker();
+    fireEvent.change(within(picker).getByLabelText("Search this folder"),
+                     { target: { value: "delivery" } });
+
+    await waitFor(() => expect(api.folders).toHaveBeenLastCalledWith(
+      "/shoots/Katie", "delivery"));
+    expect(await within(picker).findByRole("button", { name: /zzz-delivery/ }))
+      .toBeTruthy();
+  });
+
+  it("says the search reaches the whole folder, not just the shown names", async () => {
+    api.folders.mockResolvedValue(pickerListing({
+      truncated: true,
+      entries: [entry("shoot_0001")],
+    }));
+
+    const picker = await openPicker();
+    expect(await within(picker).findByText(
+      "Showing the first 400 names — search covers the whole folder.")).toBeTruthy();
   });
 });

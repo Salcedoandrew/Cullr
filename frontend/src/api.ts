@@ -37,8 +37,15 @@ export const api = {
     }),
   library: (id: number) => request<Library>(`/api/libraries/${id}`),
 
-  folders: (path?: string) =>
-    request<FolderListing>(path ? `/api/folders?path=${encodeURIComponent(path)}` : "/api/folders"),
+  /** One listing. `query` searches the whole folder on the server -- the
+   *  entries that come back are capped, but the search is not. */
+  folders: (path?: string, query?: string) => {
+    const params = new URLSearchParams();
+    if (path) params.set("path", path);
+    if (query?.trim()) params.set("q", query.trim());
+    const suffix = params.toString();
+    return request<FolderListing>(suffix ? `/api/folders?${suffix}` : "/api/folders");
+  },
   createFolder: (parent: string, name: string) =>
     request<{ path: string; name: string }>("/api/folders", {
       method: "POST",

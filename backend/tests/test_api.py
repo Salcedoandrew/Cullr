@@ -492,3 +492,39 @@ def test_semantic_dedup_round_trips_with_the_library(tmp_path):
         # Off again: a library that never opts in keeps today's hash-only path.
         assert client.get("/api/capabilities").json()["default_settings"][
             "semantic_dedup"] is False
+
+
+def test_the_picker_finds_a_folder_past_the_400_entry_window(client, tmp_path):
+    """The shoot folder in the video held ~6,000 entries. The grid renders the
+    first 400, so a destination created inside it still has to be reachable:
+    search asks the server about the whole folder, not about the window."""
+    root = tmp_path / "shoot"
+    root.mkdir()
+    for index in range(405):
+        (root / f"shoot_{index:04d}").mkdir()
+    (root / "zzz-delivery").mkdir()      # sorts last, past the window
+
+    listing = client.get("/api/folders", params={"path": str(root)}).json()
+    assert listing["truncated"] is True
+    assert listing["limit"] == 400
+    shown = [entry["name"] for entry in listing["entries"]]
+    assert len(shown) == 400
+    assert "zzz-delivery" not in shown
+
+    found = client.get("/api/folders",
+                       params={"path": str(root), "q": "delivery"}).json()
+    assert [entry["name"] for entry in found["entries"]] == ["zzz-delivery"]
+    assert found["truncated"] is False
+
+
+def test_the_picker_lists_folders_before_files(client, tmp_path):
+    root = tmp_path / "mixed"
+    root.mkdir()
+    (root / "delivery").mkdir()
+    for index in range(30):
+        (root / f"IMG_{index:04d}.jpg").write_bytes(b"")
+
+    kinds = [entry["kind"] for entry in
+             client.get("/api/folders", params={"path": str(root)}).json()["entries"]]
+    assert kinds[:1] == ["folder"]
+    assert "folder" not in kinds[1:]

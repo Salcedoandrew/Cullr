@@ -128,7 +128,11 @@ export interface FolderListing {
     shared: FolderShortcut[];
     locations: FolderShortcut[];
   };
+  /** True when the folder holds more entries than the window the grid renders.
+   *  A search is not limited by it; only the ordinary listing is. */
   truncated: boolean;
+  /** Entries per window, as the server applies it. Older servers omit it. */
+  limit?: number;
 }
 
 export interface ExportMemory {

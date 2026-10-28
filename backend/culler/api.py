@@ -164,13 +164,24 @@ def _image_size(path: str) -> tuple[int, int] | None:
         return None
 
 
-def _picker_entries(path: Path) -> tuple[list[dict], bool]:
-    """Folders first, then files, with the metadata Finder prints underneath."""
+def _picker_entries(path: Path, query: str | None = None) -> tuple[list[dict], bool]:
+    """Folders first, then files, with the metadata Finder prints underneath.
+
+    ``query`` matches against the *whole* directory, before the 400-entry
+    window is taken. The window is for rendering -- a shoot folder holds
+    thousands of files and the grid only needs the first screenful -- but
+    finding a folder must not depend on it appearing in that window, which is
+    how a delivery folder created inside a shoot became unreachable.
+    """
     try:
         with os.scandir(path) as scanned:
             raw = [entry for entry in scanned if not entry.name.startswith(".")]
     except PermissionError:
         raise HTTPException(403, f"permission denied: {path}") from None
+
+    needle = (query or "").strip().lower()
+    if needle:
+        raw = [entry for entry in raw if needle in entry.name.lower()]
 
     def is_dir(entry: os.DirEntry) -> bool:
         try:
@@ -492,7 +503,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     # ---- folders ------------------------------------------------------- #
     @app.get("/api/folders")
-    def folders(path: str | None = None) -> dict:
+    def folders(path: str | None = None, q: str | None = None) -> dict:
         """One Finder-style listing: entries, plus the sidebar places.
 
         ``folders`` stays directory-only (it is the contract the export flow was
@@ -506,7 +517,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
             raise HTTPException(400, f"cannot open {start}") from None
         if not resolved.is_dir():
             raise HTTPException(400, "not a folder")
-        entries, truncated = _picker_entries(resolved)
+        entries, truncated = _picker_entries(resolved, q)
         parent = resolved.parent
         return {
             "path": str(resolved),
@@ -517,6 +528,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
                         for entry in entries if entry["kind"] == "folder"][:500],
             "entries": entries,
             "truncated": truncated,
+            # Sent so the picker's note about the window cannot drift from the
+            # limit the server actually applies.
+            "limit": PICKER_ENTRY_LIMIT,
             "sidebar": _sidebar(),
         }
 

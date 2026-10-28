@@ -278,11 +278,60 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
     [history, remember],
   );
 
+  // The window the server sent holds the first 400 names, so filtering it here
+  // could only ever find things inside those 400 -- a delivery folder created
+  // inside a 6,000-entry shoot folder was unfindable. Search is asked of the
+  // server instead, over the whole directory; the local filter stays as the
+  // instant answer while that request is in flight.
+  const [match, setMatch] = useState<
+    { query: string; entries: FolderEntry[]; truncated: boolean } | null
+  >(null);
+  const listingPath = listing?.path ?? null;
+
+  useEffect(() => {
+    const needle = query.trim();
+    if (!needle || !listingPath) {
+      setMatch(null);
+      return undefined;
+    }
+    let cancelled = false;
+    // Debounced, because every keystroke would otherwise walk a folder that
+    // can hold thousands of entries.
+    const timer = window.setTimeout(() => {
+      api.folders(listingPath, needle)
+        .then((found) => {
+          if (!cancelled) {
+            setMatch({ query: needle, entries: found.entries,
+                       truncated: found.truncated });
+          }
+        })
+        .catch(() => {
+          /* the loaded page is still filtered locally, so nothing breaks */
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, listingPath]);
+
+  const searching = query.trim().length > 0;
+  const currentMatch = match && match.query === query.trim() ? match : null;
+  const limit = listing?.limit ?? 400;
+  // The window's own truncation only applies to an ordinary listing: while the
+  // local filter is the answer, its window is all it can see, and saying
+  // otherwise would be the old lie in a new coat.
+  const truncated = searching
+    ? currentMatch?.truncated ?? false
+    : listing?.truncated ?? false;
+
   const entries = useMemo(() => {
     const all = listing?.entries ?? [];
     const needle = query.trim().toLowerCase();
-    return needle ? all.filter((entry) => entry.name.toLowerCase().includes(needle)) : all;
-  }, [listing, query]);
+    if (!needle) return all;
+    if (currentMatch) return currentMatch.entries;
+    return all.filter((entry) => entry.name.toLowerCase().includes(needle));
+  }, [listing, query, currentMatch]);
 
   // A dropped folder is pre-selected when it is in this listing, so confirming
   // the drop is one click. Once only per dropped name: the photographer's own
@@ -702,8 +751,12 @@ export function FolderPicker({ title, startPath, actionLabel, droppedName, onPic
             {!error && listing && !listing.writable && (
               <p className="finder__error">Read-only — choose another folder.</p>
             )}
-            {!error && listing?.truncated && (
-              <p className="finder__note">Showing the first 400 names.</p>
+            {!error && truncated && (
+              <p className="finder__note">
+                {searching
+                  ? `Showing the first ${limit} matches — narrow the search.`
+                  : `Showing the first ${limit} names — search covers the whole folder.`}
+              </p>
             )}
             {!error && target && (
               <p className="finder__target" title={target}>
