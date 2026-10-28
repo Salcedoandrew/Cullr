@@ -74,7 +74,8 @@ port that closes with the window.
   folder is gone.
 * **Finder-style folder picker** — places sidebar (recents, favourites, network
   shares, volumes), an icon or list browser with real thumbnails, item counts
-  and image dimensions, a breadcrumb menu, search, and **New Folder**; styled
+  and image dimensions, a breadcrumb menu, search, and **New Folder** — a name
+  prompt, like Finder's, naming the folder it will live in; styled
   with the system's materials rather than the app's palette. The browser sends a
   screenful at a time, but **search covers the whole folder**, so a destination
   is findable in a shoot of thousands of files.
@@ -202,7 +203,8 @@ port that closes with the window.
   copies** into a delivery folder, or a **CSV report** of every decision and reason.
 * **Finder-style destination panel** — places sidebar (recents, favourites, network
   shares, volumes), an icon or list browser with real thumbnails, item counts and
-  image dimensions, a breadcrumb menu, search, and **New Folder**; styled with the
+  image dimensions, a breadcrumb menu, search, and **New Folder** — a name
+  prompt, like Finder's, naming the folder it will live in; styled with the
   system's materials rather than the app's palette.
 * **Remembered per shoot** — each shoot's last export mode and folder are stored in
   the catalog, so the choice follows the shoot rather than one browser.
