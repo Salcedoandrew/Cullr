@@ -27,6 +27,7 @@ exact-hash map for duplicates that appear anywhere in the shoot.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterator
 from dataclasses import dataclass
 
 from .config import CullingSettings
@@ -96,6 +97,25 @@ class _Edge:
     dt: float | None
 
 
+@dataclass
+class _Pair:
+    """A stage-1 candidate: the hash rules' verdict on one pair of frames."""
+
+    a: int
+    b: int
+    dist_ph: int
+    dt: float | None
+    burst: bool
+    near_dup: bool
+    similar: bool
+    same_scene: bool
+    loose: bool           # only the loose Hamming prefilter admits it
+
+    @property
+    def strong(self) -> bool:
+        return self.near_dup or self.burst
+
+
 def _time_ordered(items: list[SimilarityItem]) -> list[SimilarityItem]:
     """Order by capture time; untimed files keep their (path) order at the end."""
     timed = [it for it in items if it.captured_at is not None]
@@ -150,76 +170,18 @@ def find_groups(
             return True  # no evidence against: keep the hash decision
         return sim >= cos_threshold
 
-    # 1. Near-duplicates anywhere in the shoot, independent of capture time.
-    #    Files can be imported twice with different EXIF times (or no EXIF at
-    #    all), so the time window alone is not enough. Blocking on the top and
-    #    bottom 32 bits of the 64-bit hash keeps this O(n) while still finding
-    #    ~99.9% of pairs within a 6-bit Hamming distance: a hash pair within 6
-    #    bits differs in the top half with probability < 2%, and in both halves
-    #    with probability < 0.1%.
-    for a, b in _blocked_pairs(hashes):
-        dist_ph = hamming(hashes[a][0], hashes[b][0])
-        if dist_ph > settings.similar_distance:
-            continue
-        if not embedding_ok(a, b):
-            continue
-        edges.append(_Edge(a, b, strong=dist_ph <= settings.duplicate_distance, dt=None))
-
-    # 2. Sliding time window: bursts and same-scene sequences.
-    for i, item in enumerate(ordered):
-        compared = 0
-        for j in range(i + 1, len(ordered)):
-            if compared >= MAX_NEIGHBOURS:
-                break
-            other = ordered[j]
-            dt: float | None = None
-            if item.captured_at is not None and other.captured_at is not None:
-                dt = abs(other.captured_at - item.captured_at)
-                # Without embeddings the window is what bounds this loop. With
-                # them, a loose hash match is worth a cosine whatever its
-                # distance in time; MAX_NEIGHBOURS still bounds the work.
-                if dt > settings.similar_window_seconds and not has_embeddings:
-                    break  # ordered by time: everything further is further away
-            else:
-                # Untimed files: compare against the next few in path order only.
-                if j - i > 6:
-                    break
-
-            ph_a, dh_a = hashes[i]
-            ph_b, dh_b = hashes[j]
-            compared += 1
-            if ph_a is None or ph_b is None:
+    for pair in _stage_one_pairs(ordered, hashes, settings,
+                                 truncate_at_window=not has_embeddings):
+        if not pair.loose:
+            if not embedding_ok(pair.a, pair.b):
                 continue
-
-            dist_ph = hamming(ph_a, ph_b)
-            dist_dh = hamming(dh_a, dh_b) if dh_a is not None and dh_b is not None else 64
-
-            is_burst = dt is not None and dt <= settings.burst_window_seconds
-            near_dup = dist_ph <= settings.duplicate_distance
-            similar = (dist_ph <= settings.similar_distance
-                       and dist_dh <= settings.similar_distance + 4)
-            same_scene = (dt is not None and dt <= settings.similar_window_seconds
-                          and dist_ph <= settings.similar_distance + 6)
-
-            # Stage 1, loose arm: with an embedder, a hash pair the strict
-            # rules reject is still a candidate -- stage 2 decides it below.
-            loose_only = (has_embeddings and dist_ph <= LOOSE_PREFILTER_DISTANCE
-                          and not (near_dup or similar or same_scene or is_burst))
-            if not (near_dup or similar or same_scene or is_burst or loose_only):
+        else:
+            # An edge the hash rules would not stand up alone needs a real
+            # confirmation: no vector means no edge, not "keep the hash".
+            sim = cosine_of(pair.a, pair.b)
+            if sim is None or sim < cos_threshold:
                 continue
-            if not embedding_ok(i, j):
-                continue
-            if loose_only:
-                # An edge the hash rules would not stand up alone needs a real
-                # confirmation: no vector means no edge, not "keep the hash".
-                sim = cosine_of(i, j)
-                if sim is None or sim < cos_threshold:
-                    continue
-            edges.append(_Edge(i, j, strong=near_dup or is_burst, dt=dt))
-            if dist_ph <= settings.duplicate_distance or is_burst:
-                # A burst or near-duplicate: keep scanning a little further for
-                # the rest of the burst, then stop.
-                continue
+        edges.append(_Edge(pair.a, pair.b, strong=pair.strong, dt=pair.dt))
 
     min_size = max(2, settings.min_group_size)
     if not settings.group_duplicates:
@@ -252,6 +214,103 @@ def find_groups(
 
     groups.sort(key=lambda g: index_of.get(g.member_ids[0], 0))
     return groups
+
+
+def embedding_candidates(items: list[SimilarityItem],
+                         settings: CullingSettings) -> set[int]:
+    """Photos whose vector stage 2 can actually consult.
+
+    Only a frame the hash rules already put in a candidate pair can be admitted
+    or vetoed by the cosine, so a frame with no such neighbour never needs a
+    vector. Encoded here rather than in the scan so the gate has one definition:
+    this walks the same stage-1 pairs ``find_groups`` walks, with the loop bound
+    embeddings unlock (no truncation at the similar-time window), so the set is
+    a superset of the pairs a partially embedded library can decide.
+    """
+    if not items or not settings.group_duplicates:
+        return set()
+    ordered = _time_ordered(items)
+    hashes = [(hex_to_hash(it.phash), hex_to_hash(it.dhash)) for it in ordered]
+    ids: set[int] = set()
+    for pair in _stage_one_pairs(ordered, hashes, settings, truncate_at_window=False):
+        ids.add(ordered[pair.a].photo_id)
+        ids.add(ordered[pair.b].photo_id)
+    return ids
+
+
+def _stage_one_pairs(
+    ordered: list[SimilarityItem],
+    hashes: list[tuple[int | None, int | None]],
+    settings: CullingSettings,
+    *,
+    truncate_at_window: bool,
+) -> Iterator[_Pair]:
+    """Every pair the hash rules call a candidate, in the order they are tried.
+
+    Two independent arms, both O(n):
+
+    * **Anywhere in the shoot.** Files can be imported twice with different EXIF
+      times (or no EXIF at all), so the time window alone is not enough.
+      Blocking on the top and bottom 32 bits of the 64-bit hash keeps this O(n)
+      while still finding ~99.9% of pairs within a 6-bit Hamming distance: a
+      hash pair within 6 bits differs in the top half with probability < 2%,
+      and in both halves with probability < 0.1%.
+    * **Neighbour window.** Bursts and same-scene sequences, bounded by
+      MAX_NEIGHBOURS. ``truncate_at_window`` is the hash-only bound: once the
+      gap exceeds the similar-time window no further pair is worth a look.
+      Embeddings lift it, because a loose hash match the photographer would call
+      the same shot can be minutes away.
+    """
+    for a, b in _blocked_pairs(hashes):
+        ph_a, ph_b = hashes[a][0], hashes[b][0]
+        if ph_a is None or ph_b is None:
+            continue
+        dist_ph = hamming(ph_a, ph_b)
+        if dist_ph > settings.similar_distance:
+            continue
+        yield _Pair(a, b, dist_ph, None, burst=False,
+                    near_dup=dist_ph <= settings.duplicate_distance,
+                    similar=False, same_scene=False, loose=False)
+
+    for i, item in enumerate(ordered):
+        compared = 0
+        for j in range(i + 1, len(ordered)):
+            if compared >= MAX_NEIGHBOURS:
+                break
+            other = ordered[j]
+            dt: float | None = None
+            if item.captured_at is not None and other.captured_at is not None:
+                dt = abs(other.captured_at - item.captured_at)
+                if truncate_at_window and dt > settings.similar_window_seconds:
+                    break  # ordered by time: everything further is further away
+            else:
+                # Untimed files: compare against the next few in path order only.
+                if j - i > 6:
+                    break
+
+            ph_a, dh_a = hashes[i]
+            ph_b, dh_b = hashes[j]
+            compared += 1
+            if ph_a is None or ph_b is None:
+                continue
+
+            dist_ph = hamming(ph_a, ph_b)
+            dist_dh = hamming(dh_a, dh_b) if dh_a is not None and dh_b is not None else 64
+
+            burst = dt is not None and dt <= settings.burst_window_seconds
+            near_dup = dist_ph <= settings.duplicate_distance
+            similar = (dist_ph <= settings.similar_distance
+                       and dist_dh <= settings.similar_distance + 4)
+            same_scene = (dt is not None and dt <= settings.similar_window_seconds
+                          and dist_ph <= settings.similar_distance + 6)
+            # Stage 1, loose arm: a hash pair the strict rules reject is still a
+            # candidate -- stage 2 decides it.
+            loose = (dist_ph <= LOOSE_PREFILTER_DISTANCE
+                     and not (near_dup or similar or same_scene or burst))
+            if not (near_dup or similar or same_scene or burst or loose):
+                continue
+            yield _Pair(i, j, dist_ph, dt, burst=burst, near_dup=near_dup,
+                        similar=similar, same_scene=same_scene, loose=loose)
 
 
 def _blocked_pairs(hashes: list[tuple[int | None, int | None]]) -> set[tuple[int, int]]:
