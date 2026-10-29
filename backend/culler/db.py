@@ -385,6 +385,17 @@ class Store:
                      embedding_bytes(face.get("embedding"))),
                 )
 
+    def update_scene_embedding(self, photo_id: int, blob: bytes | None) -> None:
+        """Store one photo's scene vector on its own.
+
+        Vectors are decided after every hash is known (only frames near a
+        duplicate candidate need one), so they cannot ride along with
+        ``update_analysis``.
+        """
+        with self.connect() as conn:
+            conn.execute("UPDATE photos SET scene_embedding = ? WHERE id = ?",
+                         (blob, photo_id))
+
     def stored_analysis(self, library_id: int) -> list[dict]:
         """Rows needed for grouping/scoring without re-decoding the files."""
         with self.connect() as conn:

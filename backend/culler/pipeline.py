@@ -40,7 +40,9 @@ from .persons import (
 )
 from .scoring import PhotoScore, group_median_sharpness, score_photo
 from .selection import GroupSelection, SelectionSignals, rank, select
-from .similarity import Group, SimilarityItem, find_groups
+from .similarity import (
+    Group, SimilarityItem, embedding_candidates, find_groups,
+)
 
 ProgressCb = Callable[[str, int, int, str], None]
 
@@ -146,6 +148,90 @@ def _scene_vectors(photos: list[AnalysedPhoto],
         return None
     vectors = {p.photo_id: p.scene_embedding for p in photos if p.scene_embedding}
     return vectors or None
+
+
+# The embedding model sees a 224 px centre crop, so a candidate is re-decoded to
+# a 512 px edge rather than the analysis edge: enough pixels for the crop, a
+# fraction of the decode.
+_EMBED_DECODE_EDGE = 512
+
+
+def _attach_scene_vectors(
+    photos: list[AnalysedPhoto],
+    settings: CullingSettings,
+    embedder: SceneEmbedder | None,
+    store: Store,
+    progress: ProgressCb,
+    cancel_event: threading.Event,
+    pause_event: threading.Event,
+) -> int:
+    """Embed only the frames the duplicate gate can consult.
+
+    The gate lives on the hashes: a cosine can admit a loose hash pair or veto a
+    hash match, but it cannot conjure a pair out of nothing. So a frame whose
+    neighbours all sit far away in hash space needs no vector, and on a wedding
+    shoot the frames that do are the bursts -- the ones a photographer culls.
+
+    This runs after analysis because the decision needs every neighbour's hash,
+    and only this second pass knows which frames became candidates. Returns the
+    number of vectors stored.
+    """
+    if embedder is None or not photos:
+        return 0
+    items = [
+        SimilarityItem(photo_id=p.photo_id, captured_at=p.meta.captured_at,
+                       phash=p.phash, dhash=p.dhash, order=p.photo_id)
+        for p in photos
+    ]
+    wanted = embedding_candidates(items, settings)
+    todo = [p for p in photos
+            if p.photo_id in wanted and p.scene_embedding is None and not p.error]
+    if not todo:
+        return 0
+
+    progress("embedding", 0, len(todo),
+             f"Confirming {len(todo)} duplicate candidates")
+    done = 0
+    lock = threading.Lock()
+
+    def embed_one(photo: AnalysedPhoto) -> tuple[AnalysedPhoto, tuple[float, ...] | None]:
+        bgr, _meta, error = load_image(Path(photo.path), _EMBED_DECODE_EDGE)
+        if bgr is None or error:
+            return photo, None
+        return photo, embedder.embed(bgr)
+
+    def store_vector(future) -> None:
+        nonlocal done
+        try:
+            photo, vector = future.result()
+        except Exception:  # noqa: BLE001 - one frame must not abort the scan
+            return
+        if vector is not None:
+            photo.scene_embedding = vector
+            store.update_scene_embedding(photo.photo_id, scene_bytes(vector))
+        with lock:
+            done += 1
+            if done % 20 == 0 or done == len(todo):
+                progress("embedding", done, len(todo),
+                         f"Confirmed {done}/{len(todo)} duplicate candidates")
+
+    handled: set = set()
+    with ThreadPoolExecutor(max_workers=_worker_count()) as pool:
+        futures = {pool.submit(embed_one, photo): photo for photo in todo}
+        for future in as_completed(futures):
+            if cancel_event.is_set() or pause_event.is_set():
+                for pending in futures:
+                    pending.cancel()
+                break
+            store_vector(future)
+            handled.add(future)
+        # Same bargain as analysis: a pause keeps what the pool had already
+        # finished, so Resume does not pay for those frames a second time.
+        for future in futures:
+            if future not in handled and future.done() and not future.cancelled():
+                store_vector(future)
+    return done
+
 
 
 @dataclass
@@ -562,8 +648,11 @@ def run_scan(
     # Semantic confirmation is opt-in per library. Loading the session here (on
     # the main thread, before the pool) means the workers share one already-built
     # session; a missing runtime or model just leaves the gate hash-only.
+    # Built even when nothing is pending: a library that switched the model on
+    # after its first scan has rows with no vector, and the second pass below is
+    # where those get filled.
     embedder: SceneEmbedder | None = None
-    if settings.semantic_dedup and pending:
+    if settings.semantic_dedup:
         candidate = SceneEmbedder()
         embedder = candidate if candidate.available else None
     total_pending = len(pending)
@@ -577,12 +666,15 @@ def run_scan(
 
     def analyse_one(item: tuple[Path, int, str]) -> AnalysedPhoto:
         path, photo_id, key = item
-        meta, tech, faces, error, p_hash, d_hash, scene = analyse_file(
-            path, analyzer, embedder=embedder)
+        # No inline embedding: the vector is only worth computing for frames a
+        # hash candidate pair touches, and that is not known until every file is
+        # decoded (`_attach_scene_vectors`).
+        meta, tech, faces, error, p_hash, d_hash, _inline_scene = analyse_file(
+            path, analyzer)
         return AnalysedPhoto(
             photo_id=photo_id, path=str(path), filename=path.name, meta=meta,
             tech=tech, faces=faces, phash=p_hash, dhash=d_hash, error=error,
-            content_key=key, scene_embedding=scene,
+            content_key=key, scene_embedding=None,
         )
 
     def handle(future, item) -> None:
@@ -636,6 +728,19 @@ def run_scan(
             # Grouping and selection have not run, so the sheet keeps whatever
             # verdicts it had; the analyses that did finish are stored and a
             # resume reuses them instead of looking at those frames again.
+            result.paused = True
+            result.elapsed = time.monotonic() - started
+            return result
+        if cancel_event.is_set():
+            result.cancelled = True
+            result.elapsed = time.monotonic() - started
+            return result
+
+    # ---- 2b. scene vectors, only where the gate can use them -------------- #
+    if settings.semantic_dedup:
+        _attach_scene_vectors(photos, settings, embedder, store, progress,
+                              cancel_event, pause_event)
+        if pause_event.is_set():
             result.paused = True
             result.elapsed = time.monotonic() - started
             return result
