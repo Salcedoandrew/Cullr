@@ -574,12 +574,17 @@ for a worker split later.
 * RAW decoding via `rawpy` (optional install; JPEG previews of RAWs work if the
   camera wrote an embedded JPEG — otherwise install `rawpy`).
 * Semantic duplicate confirmation (DINOv2-small ONNX) — implemented and
-  **opt-in**: the `semantic` extra plus a 42 MB checksum-pinned download, a
-  per-library flag, 768 stored bytes per photo and about 40 ms per photo
-  (measured: 81 → 117 ms/photo on the 72-frame Teasers shoot). Measured on that
-  shoot, it added no merges at facet's 12-bit prefilter — the pairs that looked
-  like duplicates sat 16–30 bits apart — so it stays off by default until a
-  labelled set justifies widening the prefilter. CLIP is not used.
+  **opt-in**: the `semantic` extra plus a 42 MB checksum-pinned download and a
+  per-library flag. Only the frames the hash rules make duplicate candidates are
+  embedded — on a wedding shoot, the bursts — because a cosine can admit or veto
+  a hash pair but never create one, so a frame with no candidate neighbour gains
+  nothing from a vector. The cost is therefore per *candidate frame*: 768 stored
+  bytes each and about 40 ms on each, measured as 81 → 117 ms/photo on the
+  72-frame Teasers shoot back when every photo was embedded. Vectors are cached
+  on their rows, so a rescan or a resumed scan embeds nothing twice. Measured on
+  that shoot, it added no merges at facet's 12-bit prefilter — the pairs that
+  looked like duplicates sat 16–30 bits apart — so it stays off by default until
+  a labelled set justifies widening the prefilter. CLIP is not used.
 * Learned (as opposed to classical) face embeddings; see §4.6 for why the
   permissive options were deferred.
 * Naming people, per-person export albums, "bride & groom priority" weights.

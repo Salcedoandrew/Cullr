@@ -103,12 +103,14 @@ port that closes with the window.
   across the whole shoot (a re-import with a different timestamp), and groups are
   chunked at 24 frames or a bounded time span so single-linkage cannot chain a
   whole ceremony into one group.
-* **Optional scene model** — a DINOv2-small scene vector per photo can confirm
-  loose hash matches, so a shot where a hand or expression moved still groups.
+* **Optional scene model** — a DINOv2-small scene vector can confirm loose hash
+  matches, so a shot where a hand or expression moved still groups. Only the
+  frames the hash rules make duplicate candidates are embedded (the bursts, in
+  practice) rather than every photo, and each vector is cached with its frame.
   Switch on *Detect Duplicates (AI)* in the cull options: the first use downloads
   the checksum-pinned ~42 MB weights, and the scan then costs about 40 ms more
-  per photo. The runtime ships in the Mac app; from source it needs the
-  `semantic` extra. Off by default, and with it off grouping is exactly the
+  on each candidate frame. The runtime ships in the Mac app; from source it needs
+  the `semantic` extra. Off by default, and with it off grouping is exactly the
   hash-only behaviour above.
 * **Best of group** — quality with *bounded* tie-breaks for open eyes, face
   sharpness and expression, so a blink fixes a near-tie but never rescues a bad

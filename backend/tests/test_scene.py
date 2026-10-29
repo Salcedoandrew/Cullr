@@ -17,6 +17,7 @@ is optional, and the default build must pass without it.
 from __future__ import annotations
 
 import math
+import threading
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +32,10 @@ from culler.metrics.scene import (
     preprocess, semantic_available,
 )
 from culler.metrics.technical import TechnicalMetrics
-from culler.pipeline import AnalysedPhoto, _from_row, analyse_file, plan
+from culler.pipeline import (
+    AnalysedPhoto, _attach_scene_vectors, _from_row, analyse_file, plan,
+)
+from culler.similarity import SimilarityItem, embedding_candidates
 
 
 def unit(*values: float) -> tuple[float, ...]:
@@ -128,10 +132,11 @@ def test_semantic_available_needs_the_model_file(tmp_path, monkeypatch):
 # --------------------------------------------------------------------------- #
 
 def sample_photo(photo_id: int, phash: str, dhash: str,
-                 scene: tuple[float, ...] | None = None) -> AnalysedPhoto:
+                 scene: tuple[float, ...] | None = None,
+                 path: str | None = None) -> AnalysedPhoto:
     return AnalysedPhoto(
         photo_id=photo_id,
-        path=f"/shoot/{photo_id}.jpg",
+        path=path or f"/shoot/{photo_id}.jpg",
         filename=f"{photo_id}.jpg",
         meta=ImageMeta(width=4000, height=3000),
         tech=TechnicalMetrics(sharpness=200.0, tenengrad=12.0, clip_hi=0.0,
@@ -210,6 +215,118 @@ def test_low_cosine_does_not_widen_recall():
                      scene=unit(0.5, math.sqrt(1 - 0.25))),
     ]
     assert plan(photos, CullingSettings(semantic_dedup=True)).groups == []
+
+
+# --------------------------------------------------------------------------- #
+# Only candidate frames are worth a vector
+# --------------------------------------------------------------------------- #
+
+# 17 bits, all in the bottom half and none of them shared with PHASH_B or with
+# the zero hash: outside the 14-bit similar gate in both directions, and sharing
+# no blocked half, so no arm can make this frame a candidate.
+LONE_PHASH = ((1 << 20) - 1) & ~0b111
+
+
+def candidate_items(photos: list[AnalysedPhoto]) -> list[SimilarityItem]:
+    return [SimilarityItem(photo_id=p.photo_id, captured_at=None,
+                           phash=p.phash, dhash=p.dhash, order=p.photo_id)
+            for p in photos]
+
+
+def lone_photo(photo_id: int = 3, **kwargs) -> AnalysedPhoto:
+    return sample_photo(photo_id, f"{LONE_PHASH:016x}", f"{LONE_PHASH:016x}",
+                        **kwargs)
+
+
+def test_candidates_are_exactly_the_frames_a_pair_touches():
+    photos = [
+        sample_photo(1, f"{0:016x}", f"{0:016x}"),
+        sample_photo(2, f"{PHASH_B:016x}", f"{2**64 - 1:016x}"),
+        lone_photo(),
+    ]
+    wanted = embedding_candidates(candidate_items(photos),
+                                  CullingSettings(semantic_dedup=True))
+    assert wanted == {1, 2}
+
+
+def test_no_candidates_when_grouping_is_off():
+    photos = [
+        sample_photo(1, f"{0:016x}", f"{0:016x}"),
+        sample_photo(2, f"{PHASH_B:016x}", f"{2**64 - 1:016x}"),
+    ]
+    off = CullingSettings(semantic_dedup=True, group_duplicates=False)
+    assert embedding_candidates(candidate_items(photos), off) == set()
+
+
+class CountingEmbedder:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed(self, _bgr):
+        self.calls += 1
+        return unit(1.0)
+
+
+def run_vector_pass(photos, embedder, store, settings=None) -> int:
+    return _attach_scene_vectors(
+        photos, settings or CullingSettings(semantic_dedup=True), embedder, store,
+        lambda *_args: None, threading.Event(), threading.Event(),
+    )
+
+
+def test_second_pass_embeds_candidates_only_and_caches_them(tmp_path, photo_dir):
+    files = sorted(photo_dir.glob("*.jpg"))
+    store = Store(tmp_path / "catalog.db")
+    library = store.create_or_get_library(str(photo_dir))
+    ids = [store.upsert_photo(library["id"], path, f"key-{index}", 10, 1.0)
+           for index, path in enumerate(files)]
+    photos = [
+        sample_photo(ids[0], f"{0:016x}", f"{0:016x}", path=str(files[0])),
+        sample_photo(ids[1], f"{PHASH_B:016x}", f"{2**64 - 1:016x}",
+                     path=str(files[1])),
+        lone_photo(ids[2], path=str(files[2])),
+    ]
+
+    embedder = CountingEmbedder()
+    assert run_vector_pass(photos, embedder, store) == 2
+    assert embedder.calls == 2
+    assert store.stored_analysis_for(ids[0])["scene_embedding"] is not None
+    assert store.stored_analysis_for(ids[1])["scene_embedding"] is not None
+    assert store.stored_analysis_for(ids[2])["scene_embedding"] is None
+
+    # The vectors are stored with the analysis, so a rescan embeds nothing.
+    again = CountingEmbedder()
+    assert run_vector_pass(photos, again, store) == 0
+    assert again.calls == 0
+
+
+def test_second_pass_reuses_a_vector_it_already_has(tmp_path, photo_dir):
+    files = sorted(photo_dir.glob("*.jpg"))
+    store = Store(tmp_path / "catalog.db")
+    library = store.create_or_get_library(str(photo_dir))
+    ids = [store.upsert_photo(library["id"], path, f"key-{index}", 10, 1.0)
+           for index, path in enumerate(files[:2])]
+    photos = [
+        sample_photo(ids[0], f"{0:016x}", f"{0:016x}", scene=unit(1.0),
+                     path=str(files[0])),
+        sample_photo(ids[1], f"{PHASH_B:016x}", f"{2**64 - 1:016x}",
+                     path=str(files[1])),
+    ]
+
+    embedder = CountingEmbedder()
+    assert run_vector_pass(photos, embedder, store) == 1
+    assert embedder.calls == 1
+
+
+def test_no_embedder_means_no_second_pass(tmp_path, photo_dir):
+    files = sorted(photo_dir.glob("*.jpg"))
+    store = Store(tmp_path / "catalog.db")
+    library = store.create_or_get_library(str(photo_dir))
+    photo_id = store.upsert_photo(library["id"], files[0], "key", 10, 1.0)
+    photos = [sample_photo(photo_id, f"{0:016x}", f"{0:016x}",
+                           path=str(files[0]))]
+    assert run_vector_pass(photos, None, store) == 0
+    assert store.stored_analysis_for(photo_id)["scene_embedding"] is None
 
 
 def test_analyse_file_attaches_a_vector_only_when_an_embedder_is_passed(photo_dir):

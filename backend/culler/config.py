@@ -311,7 +311,8 @@ class CullingSettings:
     burst_window_seconds: float = 2.0      # EXIF capture-time window
     similar_window_seconds: float = 8.0    # same-scene window
     min_group_size: int = 2
-    # Semantic duplicate confirmation: one DINOv2-small scene vector per photo,
+    # Semantic duplicate confirmation: a DINOv2-small scene vector on the frames
+    # the hash rules make duplicate candidates (`similarity.embedding_candidates`),
     # stored with the analysis and used by `similarity.find_groups` to confirm
     # loose hash matches. Off by default, because it needs the optional
     # `semantic` extra plus a one-time model download; see
