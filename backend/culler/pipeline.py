@@ -257,7 +257,7 @@ def _selection_signals(photo: AnalysedPhoto, score: PhotoScore) -> SelectionSign
         photo_id=photo.photo_id,
         quality=score.quality,
         eyes_open=photo.faces.worst_eyes_open,
-        face_sharpness=None if face_sharp is None else face_sharp * 100.0,
+        face_sharpness=None if face_sharp is None else face_sharp * 10.0,
         smile=photo.faces.smile,
         reason=score.reason,
         captured_at=photo.meta.captured_at,
