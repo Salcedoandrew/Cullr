@@ -927,6 +927,17 @@ def create_app(data_dir: Path | None = None,
         elif body.mode == "copy":
             if not body.dest:
                 raise HTTPException(400, "dest is required for copy export")
+            # A delivery folder inside the shoot would be ingested as new
+            # photos on the next scan, duplicating the shoot. Reject only --
+            # never touch the destination.
+            root = Path(library["root_path"]).expanduser().resolve()
+            target = Path(body.dest).expanduser().resolve()
+            if target == root or root in target.parents:
+                raise HTTPException(
+                    400,
+                    "export destination cannot be the library folder or inside it; "
+                    "choose a folder outside the shoot",
+                )
             result = export_mod.copy_keepers(store, library_id, body.dest)
         elif body.mode == "csv":
             if not body.dest:
